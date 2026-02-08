@@ -17,7 +17,6 @@ if File(webrtc_lib).exists():
             "WEBRTC_AUDIO_PROCESSING_ONLY_BUILD",
             "NOMINMAX",
             "_WINSOCKAPI_",
-            "_USE_MATH_DEFINES",
         ]
     )
     env.AppendUnique(CPPPATH=[webrtc_inc])

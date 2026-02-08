@@ -20,6 +20,14 @@ void EchoGuardProcessor::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_aec_enabled"), &EchoGuardProcessor::get_aec_enabled);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "aec_enabled"), "set_aec_enabled", "get_aec_enabled");
 
+	ClassDB::bind_method(D_METHOD("set_aec_extended_filter", "enabled"), &EchoGuardProcessor::set_aec_extended_filter);
+	ClassDB::bind_method(D_METHOD("get_aec_extended_filter"), &EchoGuardProcessor::get_aec_extended_filter);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "aec_extended_filter"), "set_aec_extended_filter", "get_aec_extended_filter");
+
+	ClassDB::bind_method(D_METHOD("set_aec_delay_agnostic", "enabled"), &EchoGuardProcessor::set_aec_delay_agnostic);
+	ClassDB::bind_method(D_METHOD("get_aec_delay_agnostic"), &EchoGuardProcessor::get_aec_delay_agnostic);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "aec_delay_agnostic"), "set_aec_delay_agnostic", "get_aec_delay_agnostic");
+
 	ClassDB::bind_method(D_METHOD("set_vad_enabled", "enabled"), &EchoGuardProcessor::set_vad_enabled);
 	ClassDB::bind_method(D_METHOD("get_vad_enabled"), &EchoGuardProcessor::get_vad_enabled);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "vad_enabled"), "set_vad_enabled", "get_vad_enabled");
@@ -63,6 +71,28 @@ void EchoGuardProcessor::set_aec_enabled(bool p_enabled) {
 
 bool EchoGuardProcessor::get_aec_enabled() const {
 	return aec_enabled;
+}
+
+void EchoGuardProcessor::set_aec_extended_filter(bool p_enabled) {
+	aec_extended_filter = p_enabled;
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
+	apm.reset();
+#endif
+}
+
+bool EchoGuardProcessor::get_aec_extended_filter() const {
+	return aec_extended_filter;
+}
+
+void EchoGuardProcessor::set_aec_delay_agnostic(bool p_enabled) {
+	aec_delay_agnostic = p_enabled;
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
+	apm.reset();
+#endif
+}
+
+bool EchoGuardProcessor::get_aec_delay_agnostic() const {
+	return aec_delay_agnostic;
 }
 
 void EchoGuardProcessor::set_vad_enabled(bool p_enabled) {
@@ -121,6 +151,8 @@ void EchoGuardProcessor::ensure_apm() {
 	}
 
 	webrtc::Config extra;
+	extra.Set<webrtc::ExtendedFilter>(new webrtc::ExtendedFilter(aec_extended_filter));
+	extra.Set<webrtc::DelayAgnostic>(new webrtc::DelayAgnostic(aec_delay_agnostic));
 	apm->SetExtraOptions(extra);
 
 	if (apm->Initialize(proc_cfg) != 0) {

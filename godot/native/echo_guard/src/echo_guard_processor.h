@@ -19,6 +19,8 @@ class EchoGuardProcessor : public RefCounted {
 	int sample_rate_hz = 48000;
 	int delay_ms = 0;
 	bool aec_enabled = true;
+	bool aec_extended_filter = false;
+	bool aec_delay_agnostic = false;
 	bool vad_enabled = true;
 	int vad_likelihood = 2; // VoiceDetection::kModerateLikelihood
 	float post_gain = 1.0f;
@@ -46,6 +48,12 @@ public:
 
 	void set_aec_enabled(bool p_enabled);
 	bool get_aec_enabled() const;
+
+	void set_aec_extended_filter(bool p_enabled);
+	bool get_aec_extended_filter() const;
+
+	void set_aec_delay_agnostic(bool p_enabled);
+	bool get_aec_delay_agnostic() const;
 
 	void set_vad_enabled(bool p_enabled);
 	bool get_vad_enabled() const;
