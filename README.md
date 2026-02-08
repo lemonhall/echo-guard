@@ -88,6 +88,26 @@ pwsh -File .\scripts\step4_vad.ps1
 pwsh -File .\scripts\step234.ps1
 ```
 
+## Step 6：Godot 4.6 端到端（跳过 Step 5）
+
+准备：
+- 把你的 BGM 放到：`godot/assets/audio/pixel_coffee_break.mp3`（本 repo 默认忽略 mp3，不会误提交）
+- Godot 路径：`E:\Godot_v4.6-stable_win64.exe\Godot_v4.6-stable_win64*.exe`
+
+运行 Godot 验证场景：
+
+```powershell
+pwsh -File .\scripts\step6_run_godot.ps1 -Console
+```
+
+在 Godot 里按 `R` 开始录制，再按 `R` 停止并导出 `raw_mic.wav` + `ref_signal.wav` 到 `out/godot_capture/<timestamp>/`。
+
+处理（调用现有 WSL 离线 AEC+VAD，生成 `clean.wav` + `vad/segment_*.wav`）：
+
+```powershell
+pwsh -File .\scripts\step6_process_capture.ps1
+```
+
 ## 文档
 
 - 方案：`doc/init.md`

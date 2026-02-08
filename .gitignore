@@ -20,3 +20,12 @@ __pycache__/
 # OS
 Thumbs.db
 Desktop.ini
+
+# Godot
+godot/.godot/
+godot/.import/
+*.import
+
+# Local assets (avoid accidental commits)
+pixel_coffee_break.mp3
+godot/assets/audio/*.mp3
