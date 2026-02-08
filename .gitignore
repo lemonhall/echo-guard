@@ -31,6 +31,8 @@ godot/.godot/
 godot/.import/
 *.import
 godot/bin/
+godot/native/**/.sconsign.dblite
+godot/native/**/*.obj
 
 # Local assets (avoid accidental commits)
 pixel_coffee_break.mp3
