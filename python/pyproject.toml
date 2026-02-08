@@ -1,0 +1,9 @@
+[project]
+name = "echo-guard"
+version = "0.0.0"
+description = "echo-guard verification utilities (scaffold)"
+requires-python = ">=3.12"
+readme = "README.md"
+
+[tool.uv]
+package = false

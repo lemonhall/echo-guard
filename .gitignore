@@ -1,0 +1,19 @@
+# Build outputs
+build/
+out/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.python-version
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+Desktop.ini
+
