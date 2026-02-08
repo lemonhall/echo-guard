@@ -40,3 +40,5 @@ godot/native/**/*.obj
 # Local assets (avoid accidental commits)
 pixel_coffee_break.mp3
 godot/assets/audio/*.mp3
+
+godot/native/echo_guard/compile_commands.json
