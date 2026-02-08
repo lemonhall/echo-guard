@@ -41,6 +41,10 @@ var _delay_ms := 0
 var _delay_ms_override := -1
 var _delay_ms_extra := 30
 var _align_to_10ms := true
+var _duck_bgm := true
+var _bgm_duck_db := -18.0
+var _bgm_volume_db_before_duck := 0.0
+var _bgm_duck_active := false
 
 @onready var _start_btn: Button = $UI/Row1/StartBtn
 @onready var _stop_btn: Button = $UI/Row1/StopBtn
@@ -72,8 +76,10 @@ func _exit_tree() -> void:
 
 func _process(_delta: float) -> void:
 	if not _recording:
+		_restore_bgm_duck()
 		_drain_captures_discard()
 		return
+	_apply_bgm_duck()
 	_pull_aligned_frames()
 
 
@@ -89,7 +95,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func start_recording() -> void:
 	_recording = true
 
-	# 恢复 BGM 播放
+	# 恢复 BGM 播放（如果刚启动时被暂停）
 	if _bgm_player and not _bgm_player.playing and _bgm_player.stream:
 		_bgm_player.play()
 
@@ -121,6 +127,9 @@ func start_recording() -> void:
 
 func stop_and_export() -> void:
 	_recording = false
+
+	# 恢复 BGM 音量（录音结束）。
+	_restore_bgm_duck()
 
 	# 停止 BGM 播放
 	if _bgm_player and _bgm_player.playing:
@@ -238,6 +247,8 @@ func _cleanup_audio() -> void:
 	# Keep shutdown clean (especially for headless --quit): stop playback and detach resources.
 	if is_instance_valid(_segment_player):
 		_segment_player.stop()
+
+	_restore_bgm_duck()
 
 	if is_instance_valid(_bgm_player):
 		_bgm_player.stop()
@@ -791,6 +802,14 @@ func _apply_cmdline_overrides() -> void:
 			_out_dir_abs = user_args[i + 1]
 			i += 2
 			continue
+		if a == "--eg-no-duck":
+			_duck_bgm = false
+			i += 1
+			continue
+		if a == "--eg-bgm-duck-db" and i + 1 < user_args.size():
+			_bgm_duck_db = float(user_args[i + 1])
+			i += 2
+			continue
 		if a == "--eg-delay-ms" and i + 1 < user_args.size():
 			_delay_ms_override = int(user_args[i + 1])
 			i += 2
@@ -818,3 +837,24 @@ func _compute_delay_ms() -> void:
 
 	_delay_ms = maxi(0, out_lat_ms + _delay_ms_extra)
 	print("[echo-guard] delay estimate: output_latency_ms=%d extra_ms=%d -> delay_ms=%d (override with --eg-delay-ms)" % [out_lat_ms, _delay_ms_extra, _delay_ms])
+
+
+func _apply_bgm_duck() -> void:
+	if not _duck_bgm:
+		return
+	if _bgm_duck_active:
+		return
+	if not _bgm_player:
+		return
+	_bgm_volume_db_before_duck = _bgm_player.volume_db
+	_bgm_player.volume_db = _bgm_duck_db
+	_bgm_duck_active = true
+
+
+func _restore_bgm_duck() -> void:
+	if not _bgm_duck_active:
+		return
+	if not _bgm_player:
+		return
+	_bgm_player.volume_db = _bgm_volume_db_before_duck
+	_bgm_duck_active = false
