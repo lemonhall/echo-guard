@@ -3,10 +3,9 @@ extends Control
 const BUS_BGM := "BGM"
 const BUS_MIC := "Mic"
 
-const CAPTURE_EFFECT_NAME := "AudioEffectCapture"
-
 var _bgm_player: AudioStreamPlayer
 var _mic_player: AudioStreamPlayer
+var _segment_player: AudioStreamPlayer
 
 var _cap_bgm: AudioEffectCapture
 var _cap_mic: AudioEffectCapture
@@ -19,6 +18,16 @@ var _mic: PackedFloat32Array = PackedFloat32Array()
 
 var _mix_rate := 48000
 var _out_dir_abs := ""
+var _last_capture_dir := ""
+
+@onready var _start_btn: Button = $UI/Row1/StartBtn
+@onready var _stop_btn: Button = $UI/Row1/StopBtn
+@onready var _open_out_btn: Button = $UI/Row1/OpenOutBtn
+@onready var _reload_btn: Button = $UI/Row1/ReloadBtn
+@onready var _status: Label = $UI/Status
+@onready var _segments: ItemList = $UI/Segments
+@onready var _play_btn: Button = $UI/Row2/PlayBtn
+@onready var _stop_play_btn: Button = $UI/Row2/StopPlayBtn
 
 
 func _ready() -> void:
@@ -27,14 +36,16 @@ func _ready() -> void:
 	_apply_cmdline_overrides()
 	_setup_buses()
 	_setup_players()
+	_wire_ui()
 	_print_instructions()
+	_set_status("Status: idle")
+	_update_ui()
 
 
 func _process(_delta: float) -> void:
 	if not _recording:
 		_drain_captures_discard()
 		return
-
 	_pull_aligned_frames()
 
 
@@ -52,7 +63,12 @@ func start_recording() -> void:
 	_record_start_ms = Time.get_ticks_msec()
 	_ref = PackedFloat32Array()
 	_mic = PackedFloat32Array()
-	print("[echo-guard] recording started")
+	if _cap_bgm:
+		_cap_bgm.clear_buffer()
+	if _cap_mic:
+		_cap_mic.clear_buffer()
+	_set_status("Status: recording… (press R or Stop)")
+	_update_ui()
 
 
 func stop_and_export() -> void:
@@ -61,6 +77,7 @@ func stop_and_export() -> void:
 	print("[echo-guard] recording stopped, duration_ms=%d ref_samples=%d mic_samples=%d" % [duration_ms, _ref.size(), _mic.size()])
 
 	var out_dir := _make_capture_dir()
+	_last_capture_dir = out_dir
 	var ref_wav := out_dir.path_join("ref_signal.wav")
 	var mic_wav := out_dir.path_join("raw_mic.wav")
 
@@ -71,13 +88,15 @@ func stop_and_export() -> void:
 	print("[echo-guard] wrote: %s" % mic_wav)
 	print("[echo-guard] next: run scripts/step6_process_capture.ps1 -CaptureDir \"%s\"" % out_dir)
 
+	_set_status("Status: exported\n- %s\n- %s\nNext: run scripts/step6_process_capture.ps1" % [mic_wav, ref_wav])
+	_reload_segments()
+	_update_ui()
+
 
 func _default_out_dir() -> String:
 	# Project root is .../echo-guard/godot; default outputs into repo out/godot_capture
-	var repo_abs := ProjectSettings.globalize_path("res://..")
-	repo_abs = repo_abs.simplify_path()
-	var out_abs := repo_abs.path_join("out").path_join("godot_capture")
-	return out_abs
+	var repo_abs := ProjectSettings.globalize_path("res://..").simplify_path()
+	return repo_abs.path_join("out").path_join("godot_capture")
 
 
 func _make_capture_dir() -> String:
@@ -112,6 +131,8 @@ func _setup_players() -> void:
 		_mic_player.play()
 	else:
 		print("[echo-guard] mic disabled (headless or --eg-no-mic)")
+
+	_segment_player = $SegmentPlayer
 
 
 func _setup_buses() -> void:
@@ -216,7 +237,216 @@ func _write_wav_pcm16_mono(path_abs: String, sample_rate: int, samples: PackedFl
 	f.close()
 
 
+func _wire_ui() -> void:
+	_start_btn.pressed.connect(func() -> void:
+		if not _recording:
+			start_recording()
+	)
+	_stop_btn.pressed.connect(func() -> void:
+		if _recording:
+			stop_and_export()
+	)
+	_open_out_btn.pressed.connect(func() -> void:
+		DirAccess.make_dir_recursive_absolute(_out_dir_abs)
+		OS.shell_open(_out_dir_abs)
+	)
+	_reload_btn.pressed.connect(func() -> void:
+		_reload_segments()
+	)
+	_play_btn.pressed.connect(func() -> void:
+		_play_selected()
+	)
+	_stop_play_btn.pressed.connect(func() -> void:
+		if _segment_player and _segment_player.playing:
+			_segment_player.stop()
+	)
+
+	_segments.item_selected.connect(func(_idx: int) -> void:
+		_update_ui()
+	)
+	_segments.gui_input.connect(func(_event: InputEvent) -> void:
+		_update_ui()
+	)
+	_segments.item_activated.connect(func(_idx: int) -> void:
+		_play_selected()
+	)
+
+
+func _update_ui() -> void:
+	_start_btn.disabled = _recording
+	_stop_btn.disabled = not _recording
+	_play_btn.disabled = _segments.get_selected_items().is_empty()
+
+
+func _set_status(text: String) -> void:
+	_status.text = text
+
+
+func _latest_capture_dir() -> String:
+	if not DirAccess.dir_exists_absolute(_out_dir_abs):
+		return ""
+	var d := DirAccess.open(_out_dir_abs)
+	if d == null:
+		return ""
+	var entries := PackedStringArray()
+	d.list_dir_begin()
+	while true:
+		var name := d.get_next()
+		if name == "":
+			break
+		if name.begins_with("."):
+			continue
+		if d.current_is_dir():
+			entries.append(name)
+	d.list_dir_end()
+	entries.sort()
+	if entries.is_empty():
+		return ""
+	return _out_dir_abs.path_join(entries[entries.size() - 1])
+
+
+func _reload_segments() -> void:
+	var base := _last_capture_dir
+	if base == "":
+		base = _latest_capture_dir()
+	if base == "":
+		_segments.clear()
+		_set_status("Status: no captures yet. Press Start/Stop to export first.")
+		return
+
+	var vad_dir := base.path_join("vad")
+	_segments.clear()
+
+	if not DirAccess.dir_exists_absolute(vad_dir):
+		_set_status("Status: exported at %s\n(No vad/ yet. Run scripts/step6_process_capture.ps1)" % base)
+		return
+
+	var d := DirAccess.open(vad_dir)
+	if d == null:
+		_set_status("Status: cannot open vad dir: %s" % vad_dir)
+		return
+
+	var files := PackedStringArray()
+	d.list_dir_begin()
+	while true:
+		var name := d.get_next()
+		if name == "":
+			break
+		if d.current_is_dir():
+			continue
+		if name.begins_with("segment_") and name.ends_with(".wav"):
+			files.append(name)
+	d.list_dir_end()
+	files.sort()
+
+	for f in files:
+		_segments.add_item(f)
+
+	var vad_txt := vad_dir.path_join("vad_result.txt")
+	if FileAccess.file_exists(vad_txt):
+		_set_status("Status: segments loaded (%d) from %s" % [files.size(), vad_dir])
+	else:
+		_set_status("Status: vad/ exists but vad_result.txt missing: %s" % vad_dir)
+
+	_update_ui()
+
+
+func _play_selected() -> void:
+	var sel := _segments.get_selected_items()
+	if sel.is_empty():
+		return
+
+	var base := _last_capture_dir
+	if base == "":
+		base = _latest_capture_dir()
+	if base == "":
+		return
+
+	var vad_dir := base.path_join("vad")
+	var filename := _segments.get_item_text(sel[0])
+	var path_abs := vad_dir.path_join(filename)
+
+	var stream := _load_wav_as_stream(path_abs)
+	if stream == null:
+		_set_status("Status: failed to load WAV: %s" % path_abs)
+		return
+
+	_segment_player.stream = stream
+	_segment_player.play()
+	_set_status("Status: playing %s" % filename)
+
+
+func _read_u16_le(b: PackedByteArray, off: int) -> int:
+	return int(b[off]) | (int(b[off + 1]) << 8)
+
+
+func _read_u32_le(b: PackedByteArray, off: int) -> int:
+	return int(b[off]) | (int(b[off + 1]) << 8) | (int(b[off + 2]) << 16) | (int(b[off + 3]) << 24)
+
+
+func _load_wav_as_stream(path_abs: String) -> AudioStreamWAV:
+	var f := FileAccess.open(path_abs, FileAccess.READ)
+	if f == null:
+		return null
+	var bytes := f.get_buffer(f.get_length())
+	f.close()
+
+	if bytes.size() < 12:
+		return null
+
+	var riff := bytes.slice(0, 4).get_string_from_ascii()
+	var wave := bytes.slice(8, 12).get_string_from_ascii()
+	if riff != "RIFF" or wave != "WAVE":
+		return null
+
+	var channels := 0
+	var sample_rate := 0
+	var bits := 0
+	var data := PackedByteArray()
+
+	var pos := 12
+	while pos + 8 <= bytes.size():
+		var id := bytes.slice(pos, pos + 4).get_string_from_ascii()
+		var sz := _read_u32_le(bytes, pos + 4)
+		var chunk_start := pos + 8
+		var chunk_end := chunk_start + sz
+		if chunk_end > bytes.size():
+			break
+
+		if id == "fmt " and sz >= 16:
+			var audio_format := _read_u16_le(bytes, chunk_start + 0)
+			channels = _read_u16_le(bytes, chunk_start + 2)
+			sample_rate = _read_u32_le(bytes, chunk_start + 4)
+			bits = _read_u16_le(bytes, chunk_start + 14)
+			if audio_format != 1:
+				return null
+		elif id == "data":
+			data = bytes.slice(chunk_start, chunk_end)
+
+		pos = chunk_end + (sz % 2)
+
+	if bits != 16:
+		return null
+	if channels != 1 and channels != 2:
+		return null
+	if data.is_empty():
+		return null
+
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = sample_rate
+	wav.stereo = channels == 2
+	wav.data = data
+	return wav
+
+
 func _print_instructions() -> void:
+	print("")
+	print("echo-guard Godot Step 6")
+	print("- BGM: res://assets/audio/pixel_coffee_break.mp3 (bus=%s)" % BUS_BGM)
+	print("- Mic: AudioStreamMicrophone (bus=%s)" % BUS_MIC)
+	print("- Hotkey: Press R to start/stop + export")
+	print("- Output base: %s" % _out_dir_abs)
 	print("")
 
 
@@ -237,9 +467,3 @@ func _apply_cmdline_overrides() -> void:
 			i += 2
 			continue
 		i += 1
-	print("echo-guard Godot Step 6")
-	print("- BGM: res://assets/audio/pixel_coffee_break.mp3 (bus=%s)" % BUS_BGM)
-	print("- Mic: AudioStreamMicrophone (bus=%s)" % BUS_MIC)
-	print("- Hotkey: Press R to start/stop + export")
-	print("- Output base: %s" % _out_dir_abs)
-	print("")

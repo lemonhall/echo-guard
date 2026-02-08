@@ -100,13 +100,15 @@ pwsh -File .\scripts\step234.ps1
 pwsh -File .\scripts\step6_run_godot.ps1 -Console
 ```
 
-在 Godot 里按 `R` 开始录制，再按 `R` 停止并导出 `raw_mic.wav` + `ref_signal.wav` 到 `out/godot_capture/<timestamp>/`。
+在 Godot 里用 UI 按钮 `Start/Stop + Export`（或快捷键 `R`）录制并导出 `raw_mic.wav` + `ref_signal.wav` 到 `out/godot_capture/<timestamp>/`。
 
 处理（调用现有 WSL 离线 AEC+VAD，生成 `clean.wav` + `vad/segment_*.wav`）：
 
 ```powershell
 pwsh -File .\scripts\step6_process_capture.ps1
 ```
+
+处理完成后回到 Godot，点 `Reload Segments`，再选中 `segment_*.wav` 点 `Play Selected` 回放。
 
 ## 文档
 
