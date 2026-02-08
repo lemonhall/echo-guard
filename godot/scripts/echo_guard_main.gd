@@ -154,7 +154,7 @@ func _setup_buses() -> void:
 	AudioServer.add_bus_effect(mic_idx, _cap_mic, 0)
 
 	# Avoid feedback/howling by default: still capture mic, but don't monitor it to speakers.
-	AudioServer.set_bus_volume_db(mic_idx, -80.0)
+	AudioServer.set_bus_mute(mic_idx, true)
 
 	_drain_captures_discard()
 
@@ -298,7 +298,7 @@ func _set_mic_monitor(enabled: bool) -> void:
 	var mic_idx := AudioServer.get_bus_index(BUS_MIC)
 	if mic_idx == -1:
 		return
-	AudioServer.set_bus_volume_db(mic_idx, 0.0 if enabled else -80.0)
+	AudioServer.set_bus_mute(mic_idx, not enabled)
 
 
 func _set_status(text: String) -> void:
@@ -447,7 +447,7 @@ func _process_last_capture() -> void:
 
 func _thread_run_process(args: PackedStringArray, cap_dir: String) -> void:
 	var output: Array = []
-	var code := OS.execute("pwsh", args, output, true, false)
+	var code := OS.execute("pwsh", args, output, true, true)
 	var text := ""
 	for line in output:
 		text += str(line) + "\n"

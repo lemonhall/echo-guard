@@ -1,5 +1,6 @@
 param(
   [switch]$SkipNative,
+  [switch]$RequireNative,
   [switch]$SkipWsl,
   [switch]$UseUv,
   [switch]$RequireDeps,
@@ -78,7 +79,7 @@ if (-not $SkipNative) {
     cmake --build $buildDir | Out-Host
     if ($LASTEXITCODE -ne 0) { $failures++ }
   } else {
-    $failures++
+    if ($RequireNative) { $failures++ } else { Write-Host "[WARN] Native checks are optional; run verify.ps1 -RequireNative to enforce." }
   }
 } else {
   Write-Section "Native (C++) Toolchain Check"

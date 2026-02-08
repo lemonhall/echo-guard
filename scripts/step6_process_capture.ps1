@@ -21,8 +21,14 @@ function To-WslPath([string]$path) {
   throw "Unsupported path for WSL conversion: $p"
 }
 
+function Get-RepoRootWin() {
+  # This script lives at <repo>/scripts/step6_process_capture.ps1
+  return (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+}
+
 function Get-LatestCaptureDir() {
-  $base = Resolve-Path ".\\out\\godot_capture" -ErrorAction SilentlyContinue
+  $repoRoot = Get-RepoRootWin
+  $base = Resolve-Path (Join-Path $repoRoot "out\\godot_capture") -ErrorAction SilentlyContinue
   if (-not $base) { return $null }
   $dirs = Get-ChildItem -Path $base.Path -Directory | Sort-Object Name -Descending
   if ($dirs.Count -eq 0) { return $null }
@@ -46,7 +52,7 @@ if (-not (Test-Path $mic)) { throw "Missing: $mic" }
 if (-not (Test-Path $ref)) { throw "Missing: $ref" }
 New-Item -ItemType Directory -Force -Path $vadDir | Out-Null
 
-$repoRootWin = (Resolve-Path ".").Path
+$repoRootWin = Get-RepoRootWin
 $repoRootWsl = To-WslPath $repoRootWin
 
 $micWsl = To-WslPath $mic
