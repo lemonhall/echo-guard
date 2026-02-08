@@ -30,7 +30,9 @@ Desktop.ini
 godot/.godot/
 godot/.import/
 *.import
-godot/bin/
+godot/**/*.uid
+godot/bin/*
+!godot/bin/*.dll
 godot/native/**/.sconsign.dblite
 godot/native/**/*.obj
 

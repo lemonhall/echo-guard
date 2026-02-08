@@ -23,7 +23,7 @@ grow_vertical = 2
 theme_override_constants/separation = 12
 
 [node name="Title" type="Label" parent="UI"]
-text = "echo-guard (Godot Step 6)"
+text = "echo-guard (Godot AEC+VAD)"
 
 [node name="Row1" type="HBoxContainer" parent="UI"]
 theme_override_constants/separation = 8
@@ -37,11 +37,8 @@ text = "Stop + Export (R)"
 [node name="OpenOutBtn" type="Button" parent="UI/Row1"]
 text = "Open Output Folder"
 
-[node name="ProcessBtn" type="Button" parent="UI/Row1"]
-text = "Process Last Capture"
-
 [node name="ReloadBtn" type="Button" parent="UI/Row1"]
-text = "Reload Segments"
+text = "Rescan Segments"
 
 [node name="Status" type="Label" parent="UI"]
 text = "Status: idle"

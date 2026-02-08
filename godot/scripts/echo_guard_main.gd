@@ -34,13 +34,10 @@ var _silence_run := 0
 var _mix_rate := 48000
 var _out_dir_abs := ""
 var _last_capture_dir := ""
-var _proc_thread: Thread
-var _proc_running := false
 
 @onready var _start_btn: Button = $UI/Row1/StartBtn
 @onready var _stop_btn: Button = $UI/Row1/StopBtn
 @onready var _open_out_btn: Button = $UI/Row1/OpenOutBtn
-@onready var _process_btn: Button = $UI/Row1/ProcessBtn
 @onready var _reload_btn: Button = $UI/Row1/ReloadBtn
 @onready var _status: Label = $UI/Status
 @onready var _segments: ItemList = $UI/Segments
@@ -132,10 +129,10 @@ func stop_and_export() -> void:
 	print("[echo-guard] wrote: %s" % mic_wav)
 	if not _clean_native.is_empty():
 		print("[echo-guard] wrote: %s" % clean_native_wav)
-	print("[echo-guard] next: run scripts/step6_process_capture.ps1 -CaptureDir \"%s\"" % out_dir)
 
-	_set_status("Status: exported\n- %s\n- %s\nNext: run scripts/step6_process_capture.ps1" % [mic_wav, ref_wav])
-	_reload_segments(false)
+	var native_note := "Native AEC+VAD: ON" if _native_proc != null else "Native AEC+VAD: OFF (plugin missing)"
+	_set_status("Status: exported\n- %s\n- %s\n%s" % [mic_wav, ref_wav, native_note])
+	_reload_segments(true)
 	_update_ui()
 
 
@@ -212,12 +209,6 @@ func _ensure_bus(bus_name: String) -> void:
 func _try_init_native() -> void:
 	_native_proc = null
 	_native_last_rms = 0.0
-
-	# Explicitly load the .gdextension resource so the class is available even if the project setting
-	# isn't applied (useful for headless runs or misconfigured projects).
-	var ext_path := "res://gdextension/echo_guard.gdextension"
-	if ResourceLoader.exists(ext_path):
-		ResourceLoader.load(ext_path)
 
 	if not ClassDB.class_exists("EchoGuardProcessor"):
 		print("[echo-guard] native extension not loaded (EchoGuardProcessor missing)")
@@ -474,9 +465,6 @@ func _wire_ui() -> void:
 		DirAccess.make_dir_recursive_absolute(_out_dir_abs)
 		OS.shell_open(_out_dir_abs)
 	)
-	_process_btn.pressed.connect(func() -> void:
-		_process_last_capture()
-	)
 	_reload_btn.pressed.connect(func() -> void:
 		_reload_segments()
 	)
@@ -506,8 +494,7 @@ func _update_ui() -> void:
 	_start_btn.disabled = _recording
 	_stop_btn.disabled = not _recording
 	_play_btn.disabled = _segments.get_selected_items().is_empty()
-	_process_btn.disabled = _recording or _proc_running
-	_reload_btn.disabled = _proc_running
+	_reload_btn.disabled = false
 
 
 func _set_mic_monitor(enabled: bool) -> void:
@@ -561,7 +548,7 @@ func _reload_segments(update_status: bool = true) -> void:
 
 	if not DirAccess.dir_exists_absolute(vad_dir):
 		if update_status:
-			_set_status("Status: exported at %s\n(No vad_native/ or vad/ yet.)" % base)
+			_set_status("Status: exported at %s\n(No segments yet.)" % base)
 		return
 
 	var d := DirAccess.open(vad_dir)
@@ -591,10 +578,7 @@ func _reload_segments(update_status: bool = true) -> void:
 			_set_status("Status: segments loaded (%d) from %s" % [files.size(), vad_dir])
 	else:
 		if update_status:
-			if _proc_running:
-				_set_status("Status: processing… (waiting for vad_result.txt)\n%s" % vad_dir)
-			else:
-				_set_status("Status: vad folder exists but vad_result.txt missing: %s" % vad_dir)
+			_set_status("Status: segments folder exists but vad_result.txt missing: %s" % vad_dir)
 
 	_update_ui()
 
@@ -624,69 +608,6 @@ func _play_selected() -> void:
 	_segment_player.stream = stream
 	_segment_player.play()
 	_set_status("Status: playing %s" % filename)
-
-func _process_last_capture() -> void:
-	if _proc_running:
-		return
-	if OS.has_feature("web"): # sanity
-		_set_status("Status: processing not supported on web")
-		return
-
-	var cap_dir := _last_capture_dir
-	if cap_dir == "":
-		cap_dir = _latest_capture_dir()
-	if cap_dir == "":
-		_set_status("Status: no captures yet. Export first.")
-		return
-
-	var mic_wav := cap_dir.path_join("raw_mic.wav")
-	var ref_wav := cap_dir.path_join("ref_signal.wav")
-	if not FileAccess.file_exists(mic_wav) or not FileAccess.file_exists(ref_wav):
-		_set_status("Status: capture incomplete (missing raw_mic.wav/ref_signal.wav)\n%s" % cap_dir)
-		return
-
-	var script_abs := ProjectSettings.globalize_path("res://../scripts/step6_process_capture.ps1").simplify_path()
-	if not FileAccess.file_exists(script_abs):
-		_set_status("Status: missing script: %s" % script_abs)
-		return
-
-	_proc_running = true
-	_update_ui()
-	_set_status("Status: processing… (AEC+VAD)\n%s" % cap_dir)
-
-	var args := PackedStringArray([
-		"-NoProfile",
-		"-ExecutionPolicy", "Bypass",
-		"-File", script_abs,
-		"-CaptureDir", cap_dir,
-	])
-
-	_proc_thread = Thread.new()
-	_proc_thread.start(Callable(self, "_thread_run_process").bind(args, cap_dir))
-
-
-func _thread_run_process(args: PackedStringArray, cap_dir: String) -> void:
-	var output: Array = []
-	var code := OS.execute("pwsh", args, output, true, true)
-	var text := ""
-	for line in output:
-		text += str(line) + "\n"
-	call_deferred("_on_process_done", code, text, cap_dir)
-
-
-func _on_process_done(code: int, text: String, cap_dir: String) -> void:
-	if _proc_thread:
-		_proc_thread.wait_to_finish()
-	_proc_thread = null
-	_proc_running = false
-
-	if code == 0:
-		_reload_segments(true)
-	else:
-		_set_status("Status: process failed (code=%d)\n%s\n\n%s" % [code, cap_dir, text])
-		_reload_segments(false)
-	_update_ui()
-
 
 func _read_u16_le(b: PackedByteArray, off: int) -> int:
 	return int(b[off]) | (int(b[off + 1]) << 8)
@@ -754,12 +675,12 @@ func _load_wav_as_stream(path_abs: String) -> AudioStreamWAV:
 
 func _print_instructions() -> void:
 	print("")
-	print("echo-guard Godot Step 6")
+	print("echo-guard Godot (native AEC+VAD)")
 	_try_init_native()
 	if _native_proc != null:
 		print("- Native: EchoGuardProcessor loaded (AEC+VAD backend if built)")
 	else:
-		print("- Native: not loaded (build Step 7 to enable realtime processing)")
+		print("- Native: not loaded (DLL missing / not built)")
 	print("- BGM: res://assets/audio/pixel_coffee_break.mp3 (bus=%s)" % BUS_BGM)
 	print("- Mic: AudioStreamMicrophone (bus=%s)" % BUS_MIC)
 	print("- Hotkey: Press R to start/stop + export")
