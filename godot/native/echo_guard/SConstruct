@@ -1,0 +1,34 @@
+#!/usr/bin/env python
+
+env = SConscript("../../../deps/godot-cpp/SConstruct")
+
+env.Append(CPPPATH=["src/"])
+sources = Glob("src/*.cpp")
+
+# Optional WebRTC APM link (built via scripts/step7_build_webrtc_win.ps1).
+webrtc_install = "../../../deps/webrtc-audio-processing/install-win"
+webrtc_inc = webrtc_install + "/include/webrtc_audio_processing"
+webrtc_lib = webrtc_install + "/lib/libwebrtc_audio_processing.a"
+if File(webrtc_lib).exists():
+    env.AppendUnique(CPPDEFINES=["ECHO_GUARD_HAVE_WEBRTC_APM=1"])
+    env.AppendUnique(
+        CPPDEFINES=[
+            "WEBRTC_WIN",
+            "WEBRTC_AUDIO_PROCESSING_ONLY_BUILD",
+            "NOMINMAX",
+            "_WINSOCKAPI_",
+            "_USE_MATH_DEFINES",
+        ]
+    )
+    env.AppendUnique(CPPPATH=[webrtc_inc])
+    env.AppendUnique(LIBS=[File(webrtc_lib), "winmm"])
+else:
+    env.AppendUnique(CPPDEFINES=["ECHO_GUARD_HAVE_WEBRTC_APM=0"])
+
+library = env.SharedLibrary(
+    "../../bin/libecho_guard{}{}".format(env["suffix"], env["SHLIBSUFFIX"]),
+    source=sources,
+)
+
+env.NoCache(library)
+Default(library)
