@@ -32,6 +32,28 @@ void EchoGuardProcessor::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_post_gain"), &EchoGuardProcessor::get_post_gain);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "post_gain"), "set_post_gain", "get_post_gain");
 
+	ClassDB::bind_method(D_METHOD("set_ns_enabled", "enabled"), &EchoGuardProcessor::set_ns_enabled);
+	ClassDB::bind_method(D_METHOD("get_ns_enabled"), &EchoGuardProcessor::get_ns_enabled);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ns_enabled"), "set_ns_enabled", "get_ns_enabled");
+
+	ClassDB::bind_method(D_METHOD("set_ns_level", "level"), &EchoGuardProcessor::set_ns_level);
+	ClassDB::bind_method(D_METHOD("get_ns_level"), &EchoGuardProcessor::get_ns_level);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "ns_level"), "set_ns_level", "get_ns_level");
+
+	ClassDB::bind_method(D_METHOD("set_agc1_enabled", "enabled"), &EchoGuardProcessor::set_agc1_enabled);
+	ClassDB::bind_method(D_METHOD("get_agc1_enabled"), &EchoGuardProcessor::get_agc1_enabled);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "agc1_enabled"), "set_agc1_enabled", "get_agc1_enabled");
+
+	ClassDB::bind_method(D_METHOD("set_agc2_enabled", "enabled"), &EchoGuardProcessor::set_agc2_enabled);
+	ClassDB::bind_method(D_METHOD("get_agc2_enabled"), &EchoGuardProcessor::get_agc2_enabled);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "agc2_enabled"), "set_agc2_enabled", "get_agc2_enabled");
+
+	ClassDB::bind_method(D_METHOD("set_high_pass_enabled", "enabled"), &EchoGuardProcessor::set_high_pass_enabled);
+	ClassDB::bind_method(D_METHOD("get_high_pass_enabled"), &EchoGuardProcessor::get_high_pass_enabled);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "high_pass_enabled"), "set_high_pass_enabled", "get_high_pass_enabled");
+
+	ClassDB::bind_method(D_METHOD("get_apm_config_summary"), &EchoGuardProcessor::get_apm_config_summary);
+
 	ClassDB::bind_method(D_METHOD("process_chunk", "mic", "ref"), &EchoGuardProcessor::process_chunk);
 }
 
@@ -92,6 +114,95 @@ float EchoGuardProcessor::get_post_gain() const {
 	return post_gain;
 }
 
+void EchoGuardProcessor::set_ns_enabled(bool p_enabled) {
+	ns_enabled = p_enabled;
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
+	apm = nullptr;
+#endif
+}
+
+bool EchoGuardProcessor::get_ns_enabled() const {
+	return ns_enabled;
+}
+
+void EchoGuardProcessor::set_ns_level(int p_level) {
+	ns_level = p_level < 0 ? 0 : (p_level > 3 ? 3 : p_level);
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
+	apm = nullptr;
+#endif
+}
+
+int EchoGuardProcessor::get_ns_level() const {
+	return ns_level;
+}
+
+void EchoGuardProcessor::set_agc1_enabled(bool p_enabled) {
+	agc1_enabled = p_enabled;
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
+	apm = nullptr;
+#endif
+}
+
+bool EchoGuardProcessor::get_agc1_enabled() const {
+	return agc1_enabled;
+}
+
+void EchoGuardProcessor::set_agc2_enabled(bool p_enabled) {
+	agc2_enabled = p_enabled;
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
+	apm = nullptr;
+#endif
+}
+
+bool EchoGuardProcessor::get_agc2_enabled() const {
+	return agc2_enabled;
+}
+
+void EchoGuardProcessor::set_high_pass_enabled(bool p_enabled) {
+	high_pass_enabled = p_enabled;
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
+	apm = nullptr;
+#endif
+}
+
+bool EchoGuardProcessor::get_high_pass_enabled() const {
+	return high_pass_enabled;
+}
+
+Dictionary EchoGuardProcessor::get_apm_config_summary() const {
+	Dictionary out;
+	out["sample_rate_hz"] = sample_rate_hz;
+	out["aec_enabled"] = aec_enabled;
+	out["aec_mobile_mode"] = aec_mobile_mode;
+	out["ns_enabled"] = ns_enabled;
+	out["ns_level"] = ns_level;
+	out["agc1_enabled"] = agc1_enabled;
+	out["agc2_enabled"] = agc2_enabled;
+	out["high_pass_enabled"] = high_pass_enabled;
+	out["vad_enabled"] = vad_enabled;
+	out["vad_likelihood"] = vad_likelihood;
+	out["post_gain"] = post_gain;
+
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
+	if (apm) {
+		const webrtc::AudioProcessing::Config cfg = apm->GetConfig();
+		Dictionary apm_cfg;
+		apm_cfg["aec_enabled"] = cfg.echo_canceller.enabled;
+		apm_cfg["aec_mobile_mode"] = cfg.echo_canceller.mobile_mode;
+		apm_cfg["ns_enabled"] = cfg.noise_suppression.enabled;
+		apm_cfg["ns_level"] = int(cfg.noise_suppression.level);
+		apm_cfg["agc1_enabled"] = cfg.gain_controller1.enabled;
+		apm_cfg["agc2_enabled"] = cfg.gain_controller2.enabled;
+		apm_cfg["agc2_adaptive_digital_enabled"] = cfg.gain_controller2.adaptive_digital.enabled;
+		apm_cfg["agc2_input_volume_controller_enabled"] = cfg.gain_controller2.input_volume_controller.enabled;
+		apm_cfg["high_pass_enabled"] = cfg.high_pass_filter.enabled;
+		out["apm_config"] = apm_cfg;
+	}
+#endif
+
+	return out;
+}
+
 #if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
 void EchoGuardProcessor::ensure_apm() {
 	if (apm) {
@@ -115,15 +226,21 @@ void EchoGuardProcessor::ensure_apm() {
 	apm_cfg.echo_canceller.enabled = aec_enabled;
 	apm_cfg.echo_canceller.mobile_mode = aec_mobile_mode;
 
-	apm_cfg.noise_suppression.enabled = true;
-	apm_cfg.noise_suppression.level =
-			webrtc::AudioProcessing::Config::NoiseSuppression::kHigh;
+	apm_cfg.noise_suppression.enabled = ns_enabled;
+	const int lvl = ns_level < 0 ? 0 : (ns_level > 3 ? 3 : ns_level);
+	apm_cfg.noise_suppression.level = lvl == 0 ? webrtc::AudioProcessing::Config::NoiseSuppression::kLow
+								  : (lvl == 1 ? webrtc::AudioProcessing::Config::NoiseSuppression::kModerate
+											 : (lvl == 2 ? webrtc::AudioProcessing::Config::NoiseSuppression::kHigh
+														: webrtc::AudioProcessing::Config::NoiseSuppression::kVeryHigh));
 
-	apm_cfg.gain_controller1.enabled = true;
+	apm_cfg.gain_controller1.enabled = agc1_enabled;
 	apm_cfg.gain_controller1.mode =
 			webrtc::AudioProcessing::Config::GainController1::kAdaptiveDigital;
 
-	apm_cfg.high_pass_filter.enabled = true;
+	apm_cfg.gain_controller2.enabled = agc2_enabled;
+	apm_cfg.gain_controller2.adaptive_digital.enabled = agc2_enabled;
+
+	apm_cfg.high_pass_filter.enabled = high_pass_enabled;
 
 	apm = webrtc::AudioProcessingBuilder().SetConfig(apm_cfg).Create();
 	if (!apm) {

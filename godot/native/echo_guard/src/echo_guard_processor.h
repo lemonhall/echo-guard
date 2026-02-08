@@ -22,6 +22,12 @@ class EchoGuardProcessor : public RefCounted {
 	int vad_likelihood = 2; // 0..3 (less..more sensitive), energy VAD
 	float post_gain = 1.0f;
 
+	bool ns_enabled = true;
+	int ns_level = 0; // 0..3 => kLow/kModerate/kHigh/kVeryHigh (WebRTC)
+	bool agc1_enabled = false;
+	bool agc2_enabled = true;
+	bool high_pass_enabled = true;
+
 #if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
 	rtc::scoped_refptr<webrtc::AudioProcessing> apm;
 	webrtc::StreamConfig mono_cfg;
@@ -54,6 +60,23 @@ public:
 
 	void set_post_gain(float p_gain);
 	float get_post_gain() const;
+
+	void set_ns_enabled(bool p_enabled);
+	bool get_ns_enabled() const;
+
+	void set_ns_level(int p_level);
+	int get_ns_level() const;
+
+	void set_agc1_enabled(bool p_enabled);
+	bool get_agc1_enabled() const;
+
+	void set_agc2_enabled(bool p_enabled);
+	bool get_agc2_enabled() const;
+
+	void set_high_pass_enabled(bool p_enabled);
+	bool get_high_pass_enabled() const;
+
+	Dictionary get_apm_config_summary() const;
 
 	Dictionary process_chunk(const PackedFloat32Array &p_mic, const PackedFloat32Array &p_ref);
 };

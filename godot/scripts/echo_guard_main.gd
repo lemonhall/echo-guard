@@ -304,6 +304,8 @@ func _try_init_native() -> void:
 		return
 	_native_proc.call("set_aec_mobile_mode", false)
 	_native_proc.call("set_post_gain", 1.0) # default boost; tweak later via UI
+	if _native_proc.has_method("get_apm_config_summary"):
+		print("[echo-guard] native apm config summary: ", _native_proc.call("get_apm_config_summary"))
 	print("[echo-guard] native extension loaded: EchoGuardProcessor")
 
 
@@ -375,7 +377,7 @@ func _segment_native_vad(clean_chunk: PackedFloat32Array, voice_frames: PackedBy
 		return
 	var speech_confirm := 30
 	var silence_confirm := 150
-	var pre_roll_keep := 10
+	var pre_roll_keep := 40
 	var tail_keep := 30
 
 	var num_frames := voice_frames.size()
