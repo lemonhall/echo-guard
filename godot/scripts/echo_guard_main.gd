@@ -83,6 +83,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func start_recording() -> void:
 	_recording = true
+
+	# 恢复 BGM 播放
+	if _bgm_player and not _bgm_player.playing and _bgm_player.stream:
+		_bgm_player.play()
+
 	_record_start_ms = Time.get_ticks_msec()
 	_ref = PackedFloat32Array()
 	_mic = PackedFloat32Array()
@@ -111,6 +116,11 @@ func start_recording() -> void:
 
 func stop_and_export() -> void:
 	_recording = false
+
+	# 停止 BGM 播放
+	if _bgm_player and _bgm_player.playing:
+		_bgm_player.stop()
+
 	var duration_ms := Time.get_ticks_msec() - _record_start_ms
 	print("[echo-guard] recording stopped, duration_ms=%d ref_samples=%d mic_samples=%d clean_samples=%d" % [duration_ms, _ref.size(), _mic.size(), _clean_native.size()])
 
@@ -277,7 +287,7 @@ func _try_init_native() -> void:
 		return
 	_native_proc.call("set_sample_rate_hz", _mix_rate)
 	_native_proc.call("set_delay_ms", 0)
-	_native_proc.call("set_post_gain", 2.0) # default boost; tweak later via UI
+	_native_proc.call("set_post_gain", 1.0) # default boost; tweak later via UI
 	print("[echo-guard] native extension loaded: EchoGuardProcessor")
 
 
