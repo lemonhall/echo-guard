@@ -94,7 +94,7 @@ func stop_and_export() -> void:
 	print("[echo-guard] next: run scripts/step6_process_capture.ps1 -CaptureDir \"%s\"" % out_dir)
 
 	_set_status("Status: exported\n- %s\n- %s\nNext: run scripts/step6_process_capture.ps1" % [mic_wav, ref_wav])
-	_reload_segments()
+	_reload_segments(false)
 	_update_ui()
 
 
@@ -291,6 +291,7 @@ func _update_ui() -> void:
 	_stop_btn.disabled = not _recording
 	_play_btn.disabled = _segments.get_selected_items().is_empty()
 	_process_btn.disabled = _recording or _proc_running
+	_reload_btn.disabled = _proc_running
 
 
 func _set_mic_monitor(enabled: bool) -> void:
@@ -327,20 +328,22 @@ func _latest_capture_dir() -> String:
 	return _out_dir_abs.path_join(entries[entries.size() - 1])
 
 
-func _reload_segments() -> void:
+func _reload_segments(update_status: bool = true) -> void:
 	var base := _last_capture_dir
 	if base == "":
 		base = _latest_capture_dir()
 	if base == "":
 		_segments.clear()
-		_set_status("Status: no captures yet. Press Start/Stop to export first.")
+		if update_status:
+			_set_status("Status: no captures yet. Press Start/Stop to export first.")
 		return
 
 	var vad_dir := base.path_join("vad")
 	_segments.clear()
 
 	if not DirAccess.dir_exists_absolute(vad_dir):
-		_set_status("Status: exported at %s\n(No vad/ yet. Run scripts/step6_process_capture.ps1)" % base)
+		if update_status:
+			_set_status("Status: exported at %s\n(No vad/ yet. Run scripts/step6_process_capture.ps1)" % base)
 		return
 
 	var d := DirAccess.open(vad_dir)
@@ -366,9 +369,14 @@ func _reload_segments() -> void:
 
 	var vad_txt := vad_dir.path_join("vad_result.txt")
 	if FileAccess.file_exists(vad_txt):
-		_set_status("Status: segments loaded (%d) from %s" % [files.size(), vad_dir])
+		if update_status:
+			_set_status("Status: segments loaded (%d) from %s" % [files.size(), vad_dir])
 	else:
-		_set_status("Status: vad/ exists but vad_result.txt missing: %s" % vad_dir)
+		if update_status:
+			if _proc_running:
+				_set_status("Status: processing… (waiting for vad_result.txt)\n%s" % vad_dir)
+			else:
+				_set_status("Status: vad/ exists but vad_result.txt missing: %s" % vad_dir)
 
 	_update_ui()
 
@@ -453,11 +461,10 @@ func _on_process_done(code: int, text: String, cap_dir: String) -> void:
 	_proc_running = false
 
 	if code == 0:
-		_set_status("Status: processed OK\n%s" % cap_dir)
+		_reload_segments(true)
 	else:
 		_set_status("Status: process failed (code=%d)\n%s\n\n%s" % [code, cap_dir, text])
-
-	_reload_segments()
+		_reload_segments(false)
 	_update_ui()
 
 
