@@ -58,6 +58,22 @@ wsl -- bash -lc "cd /mnt/e/development/echo-guard && bash scripts/wsl/build_webr
 pwsh -File .\scripts\verify.ps1 -RequireDeps -RequireWslTools -RequireWslBuild
 ```
 
+## Step 2/3：生成测试数据 + 离线 AEC 验证
+
+一条命令跑通（Windows 调用 WSL 编译/运行）：
+
+```powershell
+pwsh -File .\scripts\step23.ps1
+```
+
+手动分步：
+
+```powershell
+pwsh -File .\scripts\step2_generate_test_data.ps1
+pwsh -File .\scripts\step3_offline_aec.ps1
+python .\python\scripts\evaluate_aec.py --dir out\test_data
+```
+
 ## 文档
 
 - 方案：`doc/init.md`

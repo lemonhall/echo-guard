@@ -21,3 +21,10 @@ bash scripts/wsl/build_webrtc.sh
 产物约定：
 
 - `deps/webrtc-audio-processing/install/`（头文件 + 库）
+
+离线 AEC 工具（WSL 内执行）：
+
+```bash
+bash scripts/wsl/build_offline_aec.sh
+bash scripts/wsl/run_offline_aec.sh
+```
