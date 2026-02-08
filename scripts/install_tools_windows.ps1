@@ -1,6 +1,8 @@
 param(
   [switch]$InstallCmake,
-  [switch]$InstallNinja
+  [switch]$InstallNinja,
+  [switch]$InstallMeson,
+  [switch]$InstallScons
 )
 
 Write-Host "This script is a helper for Windows tool installation."
@@ -24,6 +26,26 @@ if ($InstallNinja) {
   winget install --id Ninja-build.Ninja -e
 }
 
+if ($InstallMeson -or $InstallScons) {
+  if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+    Write-Host "[FAIL] python not found; cannot pip-install meson/scons."
+    Write-Host "       Install Python 3.12+ and re-run this script."
+    exit 1
+  }
+
+  if ($InstallMeson) {
+    Write-Host "Installing Meson (pip --user)..."
+    python -m pip install --user --upgrade meson
+  }
+
+  if ($InstallScons) {
+    Write-Host "Installing SCons (pip --user)..."
+    python -m pip install --user --upgrade scons
+  }
+
+  Write-Host ""
+  Write-Host "If meson/scons still not found, re-open your terminal so PATH updates take effect."
+}
+
 Write-Host ""
 Write-Host "Done. Re-open your terminal so PATH updates take effect."
-

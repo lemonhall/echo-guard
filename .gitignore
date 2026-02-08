@@ -3,6 +3,15 @@ build/
 out/
 dist/
 
+# deps build/install outputs
+deps/webrtc-audio-processing/build/
+deps/webrtc-audio-processing/install/
+deps/webrtc-audio-processing/build-win/
+deps/webrtc-audio-processing/install-win/
+deps/godot-cpp/bin/
+deps/godot-cpp/gen/
+deps/godot-cpp/.sconsign.dblite
+
 # Python
 __pycache__/
 *.pyc
@@ -17,3 +26,17 @@ __pycache__/
 Thumbs.db
 Desktop.ini
 
+# Godot
+godot/.godot/
+godot/.import/
+*.import
+godot/**/*.uid
+godot/bin/*
+!godot/bin/*.dll
+godot/bin/~*.dll
+godot/native/**/.sconsign.dblite
+godot/native/**/*.obj
+
+# Local assets (avoid accidental commits)
+pixel_coffee_break.mp3
+godot/assets/audio/*.mp3
