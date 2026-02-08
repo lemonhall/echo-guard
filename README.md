@@ -74,6 +74,20 @@ pwsh -File .\scripts\step3_offline_aec.ps1
 python .\python\scripts\evaluate_aec.py --dir out\test_data
 ```
 
+## Step 4：WebRTC VAD 切段
+
+在 `clean.wav` 上跑 WebRTC VAD，输出逐帧标记 + 切段 WAV：
+
+```powershell
+pwsh -File .\scripts\step4_vad.ps1
+```
+
+一步跑通 Step 2/3/4：
+
+```powershell
+pwsh -File .\scripts\step234.ps1
+```
+
 ## 文档
 
 - 方案：`doc/init.md`

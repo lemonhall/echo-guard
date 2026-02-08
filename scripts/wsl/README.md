@@ -28,3 +28,10 @@ bash scripts/wsl/build_webrtc.sh
 bash scripts/wsl/build_offline_aec.sh
 bash scripts/wsl/run_offline_aec.sh
 ```
+
+离线 VAD 切段工具（WSL 内执行）：
+
+```bash
+bash scripts/wsl/build_offline_vad.sh
+bash scripts/wsl/run_offline_vad.sh
+```
