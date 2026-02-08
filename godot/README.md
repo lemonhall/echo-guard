@@ -8,8 +8,10 @@
 - UI 按钮：
   - `Start (R)`：开始录制（同时抓取 BGM 参考信号 + 麦克风）
   - `Stop + Export (R)`：停止并导出
+  - `Process Last Capture`：直接在 Godot 内触发脚本处理（调用 `scripts/step6_process_capture.ps1`，需要 WSL）
   - `Reload Segments`：处理后刷新 `segment_*.wav` 列表
   - `Play Selected`：在 Godot 里回放切段
+  - `Monitor mic (hear yourself)`：默认关闭（避免啸叫），需要时再打开
 - 也可以按 `R` 快捷键开始/停止
 
 导出位置（默认）：`out/godot_capture/<timestamp>/`

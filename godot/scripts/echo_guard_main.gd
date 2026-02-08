@@ -19,10 +19,13 @@ var _mic: PackedFloat32Array = PackedFloat32Array()
 var _mix_rate := 48000
 var _out_dir_abs := ""
 var _last_capture_dir := ""
+var _proc_thread: Thread
+var _proc_running := false
 
 @onready var _start_btn: Button = $UI/Row1/StartBtn
 @onready var _stop_btn: Button = $UI/Row1/StopBtn
 @onready var _open_out_btn: Button = $UI/Row1/OpenOutBtn
+@onready var _process_btn: Button = $UI/Row1/ProcessBtn
 @onready var _reload_btn: Button = $UI/Row1/ReloadBtn
 @onready var _status: Label = $UI/Status
 @onready var _segments: ItemList = $UI/Segments
@@ -255,6 +258,9 @@ func _wire_ui() -> void:
 		DirAccess.make_dir_recursive_absolute(_out_dir_abs)
 		OS.shell_open(_out_dir_abs)
 	)
+	_process_btn.pressed.connect(func() -> void:
+		_process_last_capture()
+	)
 	_reload_btn.pressed.connect(func() -> void:
 		_reload_segments()
 	)
@@ -284,6 +290,7 @@ func _update_ui() -> void:
 	_start_btn.disabled = _recording
 	_stop_btn.disabled = not _recording
 	_play_btn.disabled = _segments.get_selected_items().is_empty()
+	_process_btn.disabled = _recording or _proc_running
 
 
 func _set_mic_monitor(enabled: bool) -> void:
@@ -389,6 +396,69 @@ func _play_selected() -> void:
 	_segment_player.stream = stream
 	_segment_player.play()
 	_set_status("Status: playing %s" % filename)
+
+func _process_last_capture() -> void:
+	if _proc_running:
+		return
+	if OS.has_feature("web"): # sanity
+		_set_status("Status: processing not supported on web")
+		return
+
+	var cap_dir := _last_capture_dir
+	if cap_dir == "":
+		cap_dir = _latest_capture_dir()
+	if cap_dir == "":
+		_set_status("Status: no captures yet. Export first.")
+		return
+
+	var mic_wav := cap_dir.path_join("raw_mic.wav")
+	var ref_wav := cap_dir.path_join("ref_signal.wav")
+	if not FileAccess.file_exists(mic_wav) or not FileAccess.file_exists(ref_wav):
+		_set_status("Status: capture incomplete (missing raw_mic.wav/ref_signal.wav)\n%s" % cap_dir)
+		return
+
+	var script_abs := ProjectSettings.globalize_path("res://../scripts/step6_process_capture.ps1").simplify_path()
+	if not FileAccess.file_exists(script_abs):
+		_set_status("Status: missing script: %s" % script_abs)
+		return
+
+	_proc_running = true
+	_update_ui()
+	_set_status("Status: processing… (AEC+VAD)\n%s" % cap_dir)
+
+	var args := PackedStringArray([
+		"-NoProfile",
+		"-ExecutionPolicy", "Bypass",
+		"-File", script_abs,
+		"-CaptureDir", cap_dir,
+	])
+
+	_proc_thread = Thread.new()
+	_proc_thread.start(Callable(self, "_thread_run_process").bind(args, cap_dir))
+
+
+func _thread_run_process(args: PackedStringArray, cap_dir: String) -> void:
+	var output: Array = []
+	var code := OS.execute("pwsh", args, output, true, false)
+	var text := ""
+	for line in output:
+		text += str(line) + "\n"
+	call_deferred("_on_process_done", code, text, cap_dir)
+
+
+func _on_process_done(code: int, text: String, cap_dir: String) -> void:
+	if _proc_thread:
+		_proc_thread.wait_to_finish()
+	_proc_thread = null
+	_proc_running = false
+
+	if code == 0:
+		_set_status("Status: processed OK\n%s" % cap_dir)
+	else:
+		_set_status("Status: process failed (code=%d)\n%s\n\n%s" % [code, cap_dir, text])
+
+	_reload_segments()
+	_update_ui()
 
 
 func _read_u16_le(b: PackedByteArray, off: int) -> int:
