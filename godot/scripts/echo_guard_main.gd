@@ -159,13 +159,13 @@ func _setup_buses() -> void:
 	_drain_captures_discard()
 
 
-func _ensure_bus(name: String) -> void:
-	var idx := AudioServer.get_bus_index(name)
+func _ensure_bus(bus_name: String) -> void:
+	var idx := AudioServer.get_bus_index(bus_name)
 	if idx != -1:
 		return
 	AudioServer.add_bus()
 	var new_idx := AudioServer.bus_count - 1
-	AudioServer.set_bus_name(new_idx, name)
+	AudioServer.set_bus_name(new_idx, bus_name)
 	AudioServer.set_bus_send(new_idx, "Master")
 
 
@@ -209,7 +209,7 @@ func _write_wav_pcm16_mono(path_abs: String, sample_rate: int, samples: PackedFl
 
 	var num_channels := 1
 	var bits_per_sample := 16
-	var bytes_per_sample := bits_per_sample / 8
+	var bytes_per_sample := int(bits_per_sample / 8.0)
 	var data_bytes := samples.size() * bytes_per_sample
 	var block_align := num_channels * bytes_per_sample
 	var byte_rate := sample_rate * block_align
@@ -313,13 +313,13 @@ func _latest_capture_dir() -> String:
 	var entries := PackedStringArray()
 	d.list_dir_begin()
 	while true:
-		var name := d.get_next()
-		if name == "":
+		var entry_name := d.get_next()
+		if entry_name == "":
 			break
-		if name.begins_with("."):
+		if entry_name.begins_with("."):
 			continue
 		if d.current_is_dir():
-			entries.append(name)
+			entries.append(entry_name)
 	d.list_dir_end()
 	entries.sort()
 	if entries.is_empty():
@@ -351,13 +351,13 @@ func _reload_segments() -> void:
 	var files := PackedStringArray()
 	d.list_dir_begin()
 	while true:
-		var name := d.get_next()
-		if name == "":
+		var entry_name := d.get_next()
+		if entry_name == "":
 			break
 		if d.current_is_dir():
 			continue
-		if name.begins_with("segment_") and name.ends_with(".wav"):
-			files.append(name)
+		if entry_name.begins_with("segment_") and entry_name.ends_with(".wav"):
+			files.append(entry_name)
 	d.list_dir_end()
 	files.sort()
 
