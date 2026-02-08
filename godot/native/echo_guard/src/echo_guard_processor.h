@@ -5,7 +5,7 @@
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 
-#ifdef ECHO_GUARD_HAVE_WEBRTC_APM
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
 #include <webrtc/modules/audio_processing/include/audio_processing.h>
 #include <memory>
 #include <vector>
@@ -23,7 +23,7 @@ class EchoGuardProcessor : public RefCounted {
 	int vad_likelihood = 2; // VoiceDetection::kModerateLikelihood
 	float post_gain = 1.0f;
 
-#ifdef ECHO_GUARD_HAVE_WEBRTC_APM
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
 	std::unique_ptr<webrtc::AudioProcessing> apm;
 	webrtc::StreamConfig mono_cfg;
 	webrtc::ProcessingConfig proc_cfg;

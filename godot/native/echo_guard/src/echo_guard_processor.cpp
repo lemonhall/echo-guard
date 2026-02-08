@@ -37,7 +37,7 @@ void EchoGuardProcessor::_bind_methods() {
 
 void EchoGuardProcessor::set_sample_rate_hz(int p_hz) {
 	sample_rate_hz = p_hz;
-#ifdef ECHO_GUARD_HAVE_WEBRTC_APM
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
 	apm.reset();
 #endif
 }
@@ -56,7 +56,7 @@ int EchoGuardProcessor::get_delay_ms() const {
 
 void EchoGuardProcessor::set_aec_enabled(bool p_enabled) {
 	aec_enabled = p_enabled;
-#ifdef ECHO_GUARD_HAVE_WEBRTC_APM
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
 	apm.reset();
 #endif
 }
@@ -67,7 +67,7 @@ bool EchoGuardProcessor::get_aec_enabled() const {
 
 void EchoGuardProcessor::set_vad_enabled(bool p_enabled) {
 	vad_enabled = p_enabled;
-#ifdef ECHO_GUARD_HAVE_WEBRTC_APM
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
 	apm.reset();
 #endif
 }
@@ -78,7 +78,7 @@ bool EchoGuardProcessor::get_vad_enabled() const {
 
 void EchoGuardProcessor::set_vad_likelihood(int p_likelihood) {
 	vad_likelihood = p_likelihood;
-#ifdef ECHO_GUARD_HAVE_WEBRTC_APM
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
 	apm.reset();
 #endif
 }
@@ -95,7 +95,7 @@ float EchoGuardProcessor::get_post_gain() const {
 	return post_gain;
 }
 
-#ifdef ECHO_GUARD_HAVE_WEBRTC_APM
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
 void EchoGuardProcessor::ensure_apm() {
 	if (apm) {
 		return;
@@ -181,11 +181,11 @@ Dictionary EchoGuardProcessor::process_chunk(const PackedFloat32Array &p_mic, co
 	PackedByteArray voice_frames;
 	double sum_sq = 0.0;
 
-#ifdef ECHO_GUARD_HAVE_WEBRTC_APM
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
 	ensure_apm();
 #endif
 
-#ifdef ECHO_GUARD_HAVE_WEBRTC_APM
+#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
 	if (apm) {
 		const size_t frame = mono_cfg.num_frames();
 		const float *rev_src[1] = {rev_buf.data()};
