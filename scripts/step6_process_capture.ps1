@@ -8,7 +8,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 function To-WslPath([string]$path) {
-  $p = (Resolve-Path $path).Path
+  $p = if (Test-Path $path) {
+    (Resolve-Path $path).Path
+  } else {
+    [System.IO.Path]::GetFullPath($path)
+  }
   if ($p.Length -ge 3 -and $p[1] -eq ":" -and ($p[2] -eq [char]92 -or $p[2] -eq [char]47)) {
     $drive = $p.Substring(0, 1).ToLower()
     $rest = $p.Substring(2).Replace('\', '/')
@@ -61,4 +65,3 @@ if ($LASTEXITCODE -ne 0) { throw "offline_vad failed with exit code $LASTEXITCOD
 Write-Host "[OK] Wrote: $clean"
 Write-Host "[OK] Wrote: $vadDir\\vad_result.txt"
 Write-Host "[OK] Segments under: $vadDir"
-
