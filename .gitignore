@@ -33,6 +33,7 @@ godot/.import/
 godot/**/*.uid
 godot/bin/*
 !godot/bin/*.dll
+godot/bin/~*.dll
 godot/native/**/.sconsign.dblite
 godot/native/**/*.obj
 
