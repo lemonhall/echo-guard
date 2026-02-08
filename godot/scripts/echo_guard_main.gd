@@ -10,6 +10,9 @@ var _segment_player: AudioStreamPlayer
 var _cap_bgm: AudioEffectCapture
 var _cap_mic: AudioEffectCapture
 
+var _created_bus_bgm := false
+var _created_bus_mic := false
+
 var _recording := false
 var _record_start_ms := 0
 
@@ -57,6 +60,9 @@ func _ready() -> void:
 	_set_status("Status: idle")
 	_set_mic_monitor(false)
 	_update_ui()
+
+func _exit_tree() -> void:
+	_cleanup_audio()
 
 
 func _process(_delta: float) -> void:
@@ -151,17 +157,20 @@ func _make_capture_dir() -> String:
 
 
 func _setup_players() -> void:
+	var engine_headless := _is_engine_headless()
+
 	_bgm_player = AudioStreamPlayer.new()
 	_bgm_player.bus = BUS_BGM
 	add_child(_bgm_player)
 
 	var bgm_path := "res://assets/audio/pixel_coffee_break.mp3"
-	if ResourceLoader.exists(bgm_path):
+	if ResourceLoader.exists(bgm_path) and not engine_headless:
 		_bgm_player.stream = load(bgm_path)
 		_bgm_player.autoplay = true
 		_bgm_player.play()
 	else:
-		push_warning("BGM not found: %s" % bgm_path)
+		if not ResourceLoader.exists(bgm_path):
+			push_warning("BGM not found: %s" % bgm_path)
 
 	if _should_enable_mic():
 		_mic_player = AudioStreamPlayer.new()
@@ -205,6 +214,55 @@ func _ensure_bus(bus_name: String) -> void:
 	var new_idx := AudioServer.bus_count - 1
 	AudioServer.set_bus_name(new_idx, bus_name)
 	AudioServer.set_bus_send(new_idx, "Master")
+	if bus_name == BUS_BGM:
+		_created_bus_bgm = true
+	elif bus_name == BUS_MIC:
+		_created_bus_mic = true
+
+func _cleanup_audio() -> void:
+	# Keep shutdown clean (especially for headless --quit): stop playback and detach resources.
+	if is_instance_valid(_segment_player):
+		_segment_player.stop()
+
+	if is_instance_valid(_bgm_player):
+		_bgm_player.stop()
+		_bgm_player.stream = null
+		_bgm_player.queue_free()
+
+	if is_instance_valid(_mic_player):
+		_mic_player.stop()
+		_mic_player.stream = null
+		_mic_player.queue_free()
+
+	_remove_bus_effect_by_instance(BUS_BGM, _cap_bgm)
+	_remove_bus_effect_by_instance(BUS_MIC, _cap_mic)
+	_cap_bgm = null
+	_cap_mic = null
+
+	# Remove dynamically added buses (remove higher index first to avoid shifting).
+	var to_remove: Array[int] = []
+	if _created_bus_bgm:
+		var bi := AudioServer.get_bus_index(BUS_BGM)
+		if bi != -1:
+			to_remove.append(bi)
+	if _created_bus_mic:
+		var mi := AudioServer.get_bus_index(BUS_MIC)
+		if mi != -1:
+			to_remove.append(mi)
+	to_remove.sort()
+	to_remove.reverse()
+	for idx in to_remove:
+		AudioServer.remove_bus(idx)
+
+func _remove_bus_effect_by_instance(bus_name: String, effect: AudioEffect) -> void:
+	if effect == null:
+		return
+	var idx := AudioServer.get_bus_index(bus_name)
+	if idx == -1:
+		return
+	for i in range(AudioServer.get_bus_effect_count(idx) - 1, -1, -1):
+		if AudioServer.get_bus_effect(idx, i) == effect:
+			AudioServer.remove_bus_effect(idx, i)
 
 func _try_init_native() -> void:
 	_native_proc = null
@@ -277,7 +335,7 @@ func _pull_aligned_frames() -> void:
 				_native_last_rms = float(res["rms"])
 
 func _frame_size() -> int:
-	return int(_mix_rate / 100) # 10 ms frames
+	return int(_mix_rate / 100.0) # 10 ms frames
 
 func _segment_native_vad(clean_chunk: PackedFloat32Array, voice_frames: PackedByteArray) -> void:
 	# Basic segmenter:
@@ -689,10 +747,21 @@ func _print_instructions() -> void:
 
 
 func _should_enable_mic() -> bool:
-	if OS.has_feature("headless"):
+	if _is_engine_headless():
 		return false
 	var user_args := OS.get_cmdline_user_args()
 	return not user_args.has("--eg-no-mic")
+
+
+func _is_engine_headless() -> bool:
+	# Godot has both a dedicated headless build (feature "headless") and an engine flag `--headless`.
+	if OS.has_feature("headless"):
+		return true
+	var ds := DisplayServer.get_name().to_lower()
+	if ds.contains("headless") or ds.contains("dummy"):
+		return true
+	var args := OS.get_cmdline_args()
+	return args.has("--headless")
 
 
 func _apply_cmdline_overrides() -> void:

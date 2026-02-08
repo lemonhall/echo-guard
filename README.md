@@ -1,116 +1,52 @@
 # echo-guard
 
-技术验证工程：验证本地音频链路 **Mic → WebRTC AEC3 → 能量 VAD → 导出干净人声 WAV**，并最终封装为 Godot GDExtension。
+目标：一个“开箱即用”的 Godot 4.6 工程，端到端验证本地链路 **Mic + BGM → WebRTC AEC → WebRTC VAD → 导出 WAV（干净人声 + 切段）**。
 
-## Quickstart（验证工程骨架）
+本仓库已提交 Windows 预编译 GDExtension DLL，所以**运行时不依赖任何脚本/编译**。
 
-先跑“纯骨架”校验（不要求已装 CMake / 不要求 WSL）：
+## 运行（一步到位）
 
-```powershell
-pwsh -File .\scripts\verify.ps1 -SkipNative -SkipWsl
-```
+1) 准备 BGM（可选，但建议）：放到 `godot/assets/audio/pixel_coffee_break.mp3`（该 mp3 被 `.gitignore` 忽略，不会误提交）  
+2) 用 Godot 4.6 打开 `godot/project.godot`，直接运行（主场景已设为 `res://scenes/main.tscn`）  
+3) 在 UI 点 `Start (R)` → 说话 → `Stop + Export (R)`
 
-额外验证 `uv` 的运行路径（仍然不需要联网/不拉依赖）：
+导出目录：`out/godot_capture/<timestamp>/`
 
-```powershell
-pwsh -File .\scripts\verify.ps1 -SkipNative -SkipWsl -UseUv
-```
+导出文件（核心交付物）：
+- `raw_mic.wav`：原始麦克风
+- `ref_signal.wav`：参考信号（BGM）
+- `clean_native.wav`：GDExtension（WebRTC AEC）输出
+- `vad_native/segment_###.wav` + `vad_native/vad_result.txt`：GDExtension（WebRTC VAD）切段结果
 
-如果你已装好 CMake（以及可选 Ninja / MSVC Build Tools），跑全量校验：
+说明：`Monitor mic (hear yourself)` 默认关闭（避免啸叫/回授），需要时手动打开。
 
-```powershell
-pwsh -File .\scripts\verify.ps1
-```
+## 开发：编译/更新 GDExtension（可选）
 
-## 依赖（git submodule）
-
-本仓库把 `webrtc-audio-processing` 作为 submodule 放在 `deps/webrtc-audio-processing`。
-
-首次拉取（或 clone 后补拉）：
+依赖通过 git submodule 管理：
 
 ```powershell
 git submodule update --init --recursive
 ```
 
-强制要求依赖就绪（把缺失视为失败）：
+首次（或升级 Godot 后）跑一次慢的初始化（会 dump `extension_api.json`，并用 `generate_bindings=yes` 全量生成/编译）：
 
 ```powershell
-pwsh -File .\scripts\verify.ps1 -RequireDeps
+pwsh -NoProfile -File .\scripts\init_gdextension.ps1 -GodotDir "E:\\Godot_v4.6-stable_win64.exe"
 ```
 
-## WSL 编译 webrtc-audio-processing（V1 前置）
-
-首次在 WSL 安装构建工具（避免 `sudo` 卡在输密码）：
+日常增量编译（默认 Debug；不再 dump API，也不再 generate_bindings）：
 
 ```powershell
-wsl -u root -- bash -lc "bash scripts/wsl/bootstrap_ubuntu.sh"
+pwsh -NoProfile -File .\scripts\build_gdextension.ps1
 ```
 
-编译 + 安装到 `deps/webrtc-audio-processing/install/`：
+升级 Godot / 确认需要强制重生成绑定时（慢）：用 `-RegenBindings` 显式开启（可配合 `-All` / `-ReleaseOnly`）：
 
 ```powershell
-wsl -- bash -lc "cd /mnt/e/development/echo-guard && bash scripts/wsl/build_webrtc.sh"
+pwsh -NoProfile -File .\scripts\build_gdextension.ps1 -RegenBindings -All -GodotDir "E:\\Godot_v4.6-stable_win64.exe"
 ```
-
-强制要求 WSL 工具链 + 已编译产物：
-
-```powershell
-pwsh -File .\scripts\verify.ps1 -RequireDeps -RequireWslTools -RequireWslBuild
-```
-
-## Step 2/3：生成测试数据 + 离线 AEC 验证
-
-一条命令跑通（Windows 调用 WSL 编译/运行）：
-
-```powershell
-pwsh -File .\scripts\step23.ps1
-```
-
-手动分步：
-
-```powershell
-pwsh -File .\scripts\step2_generate_test_data.ps1
-pwsh -File .\scripts\step3_offline_aec.ps1
-python .\python\scripts\evaluate_aec.py --dir out\test_data
-```
-
-## Step 4：WebRTC VAD 切段
-
-在 `clean.wav` 上跑 WebRTC VAD，输出逐帧标记 + 切段 WAV：
-
-```powershell
-pwsh -File .\scripts\step4_vad.ps1
-```
-
-一步跑通 Step 2/3/4：
-
-```powershell
-pwsh -File .\scripts\step234.ps1
-```
-
-## Step 6：Godot 4.6 端到端（跳过 Step 5）
-
-准备：
-- 把你的 BGM 放到：`godot/assets/audio/pixel_coffee_break.mp3`（本 repo 默认忽略 mp3，不会误提交）
-- Godot 路径：`E:\Godot_v4.6-stable_win64.exe\Godot_v4.6-stable_win64*.exe`
-
-运行 Godot 验证场景：
-
-```powershell
-pwsh -File .\scripts\step6_run_godot.ps1 -Console
-```
-
-在 Godot 里用 UI 按钮 `Start/Stop + Export`（或快捷键 `R`）录制并导出 `raw_mic.wav` + `ref_signal.wav` 到 `out/godot_capture/<timestamp>/`。
-
-处理（调用现有 WSL 离线 AEC+VAD，生成 `clean.wav` + `vad/segment_*.wav`）：
-
-```powershell
-pwsh -File .\scripts\step6_process_capture.ps1
-```
-
-处理完成后回到 Godot，点 `Reload Segments`，再选中 `segment_*.wav` 点 `Play Selected` 回放。
 
 ## 文档
 
-- 方案：`doc/init.md`
-- 开发/构建入口：`scripts/verify.ps1`
+- 方案/过程记录：`doc/init.md`
+- Godot 工程说明：`godot/README.md`
