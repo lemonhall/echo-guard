@@ -6,6 +6,12 @@
 
 - `deps/webrtc-audio-processing/`
 
+首次在 WSL 装构建工具（推荐用 root，避免 `sudo` 交互卡住）：
+
+```powershell
+wsl -u root -- bash -lc "bash scripts/wsl/bootstrap_ubuntu.sh"
+```
+
 构建（WSL 内执行）：
 
 ```bash

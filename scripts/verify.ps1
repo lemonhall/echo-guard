@@ -2,7 +2,10 @@ param(
   [switch]$SkipNative,
   [switch]$SkipWsl,
   [switch]$UseUv,
-  [switch]$RequireDeps
+  [switch]$RequireDeps,
+  [switch]$RequireWslTools,
+  [switch]$RequireWslBuild,
+  [string]$WslDistro = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -86,6 +89,20 @@ if (-not $SkipWsl) {
   Write-Section "WSL (webrtc-audio-processing) Check"
   $hasWsl = Require-Command "wsl" "Install WSL2 (Ubuntu 24 recommended) if you want to build webrtc-audio-processing."
   if ($hasWsl) {
+    $wslArgs = @()
+    if ($WslDistro -ne "") {
+      $wslArgs += @("-d", $WslDistro)
+    }
+
+    & wsl @wslArgs -- bash -lc "command -v meson >/dev/null 2>&1 && command -v ninja >/dev/null 2>&1"
+    if ($LASTEXITCODE -eq 0) {
+      Write-Host "[ OK ] WSL tools: meson+ninja"
+    } else {
+      Write-Host "[WARN] WSL tools missing: meson and/or ninja"
+      Write-Host '       Fix (no sudo prompt): wsl -u root -- bash -lc "bash scripts/wsl/bootstrap_ubuntu.sh"'
+      if ($RequireWslTools) { $failures++ }
+    }
+
     $webrtcPath = Join-Path $PSScriptRoot "..\\deps\\webrtc-audio-processing"
     $mesonFile = Join-Path $webrtcPath "meson.build"
     if (Test-Path $mesonFile) {
@@ -95,6 +112,15 @@ if (-not $SkipWsl) {
       Write-Host "       Fix: git submodule update --init --recursive"
       Write-Host "       See: deps/README.md and scripts/wsl/README.md"
       if ($RequireDeps) { $failures++ }
+    }
+
+    $installLib = Join-Path $webrtcPath "install\\lib\\x86_64-linux-gnu\\libwebrtc_audio_processing.a"
+    if (Test-Path $installLib) {
+      Write-Host ("[ OK ] webrtc built (WSL): {0}" -f $installLib)
+    } else {
+      Write-Host "[WARN] webrtc not built/installed yet (WSL artifact missing)"
+      Write-Host "       Fix: wsl -- bash -lc ""cd /mnt/e/development/echo-guard && bash scripts/wsl/build_webrtc.sh"""
+      if ($RequireWslBuild) { $failures++ }
     }
   } else {
     $failures++

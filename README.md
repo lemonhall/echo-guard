@@ -38,6 +38,26 @@ git submodule update --init --recursive
 pwsh -File .\scripts\verify.ps1 -RequireDeps
 ```
 
+## WSL 编译 webrtc-audio-processing（V1 前置）
+
+首次在 WSL 安装构建工具（避免 `sudo` 卡在输密码）：
+
+```powershell
+wsl -u root -- bash -lc "bash scripts/wsl/bootstrap_ubuntu.sh"
+```
+
+编译 + 安装到 `deps/webrtc-audio-processing/install/`：
+
+```powershell
+wsl -- bash -lc "cd /mnt/e/development/echo-guard && bash scripts/wsl/build_webrtc.sh"
+```
+
+强制要求 WSL 工具链 + 已编译产物：
+
+```powershell
+pwsh -File .\scripts\verify.ps1 -RequireDeps -RequireWslTools -RequireWslBuild
+```
+
 ## 文档
 
 - 方案：`doc/init.md`

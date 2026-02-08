@@ -1,3 +1,4 @@
 [submodule "deps/webrtc-audio-processing"]
 	path = deps/webrtc-audio-processing
 	url = https://github.com/cross-platform/webrtc-audio-processing
+	ignore = untracked
