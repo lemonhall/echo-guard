@@ -57,5 +57,11 @@ text = "Play Selected"
 [node name="StopPlayBtn" type="Button" parent="UI/Row2"]
 text = "Stop Playback"
 
+[node name="Row3" type="HBoxContainer" parent="UI"]
+theme_override_constants/separation = 8
+
+[node name="MonitorMicChk" type="CheckBox" parent="UI/Row3"]
+text = "Monitor mic (hear yourself)"
+
 [node name="SegmentPlayer" type="AudioStreamPlayer" parent="."]
 bus = "Master"

@@ -28,6 +28,7 @@ var _last_capture_dir := ""
 @onready var _segments: ItemList = $UI/Segments
 @onready var _play_btn: Button = $UI/Row2/PlayBtn
 @onready var _stop_play_btn: Button = $UI/Row2/StopPlayBtn
+@onready var _monitor_mic_chk: CheckBox = $UI/Row3/MonitorMicChk
 
 
 func _ready() -> void:
@@ -39,6 +40,7 @@ func _ready() -> void:
 	_wire_ui()
 	_print_instructions()
 	_set_status("Status: idle")
+	_set_mic_monitor(false)
 	_update_ui()
 
 
@@ -147,6 +149,9 @@ func _setup_buses() -> void:
 
 	AudioServer.add_bus_effect(bgm_idx, _cap_bgm, 0)
 	AudioServer.add_bus_effect(mic_idx, _cap_mic, 0)
+
+	# Avoid feedback/howling by default: still capture mic, but don't monitor it to speakers.
+	AudioServer.set_bus_volume_db(mic_idx, -80.0)
 
 	_drain_captures_discard()
 
@@ -260,6 +265,9 @@ func _wire_ui() -> void:
 		if _segment_player and _segment_player.playing:
 			_segment_player.stop()
 	)
+	_monitor_mic_chk.toggled.connect(func(enabled: bool) -> void:
+		_set_mic_monitor(enabled)
+	)
 
 	_segments.item_selected.connect(func(_idx: int) -> void:
 		_update_ui()
@@ -276,6 +284,13 @@ func _update_ui() -> void:
 	_start_btn.disabled = _recording
 	_stop_btn.disabled = not _recording
 	_play_btn.disabled = _segments.get_selected_items().is_empty()
+
+
+func _set_mic_monitor(enabled: bool) -> void:
+	var mic_idx := AudioServer.get_bus_index(BUS_MIC)
+	if mic_idx == -1:
+		return
+	AudioServer.set_bus_volume_db(mic_idx, 0.0 if enabled else -80.0)
 
 
 func _set_status(text: String) -> void:
