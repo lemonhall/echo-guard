@@ -251,7 +251,9 @@ Dictionary EchoGuardProcessor::process_chunk(const PackedFloat32Array &p_mic, co
 			}
 
 			apm->set_stream_key_pressed(false);
-			apm->set_stream_delay_ms(delay_ms);
+			if (!aec_delay_agnostic) {
+				apm->set_stream_delay_ms(delay_ms);
+			}
 			const int cap_rc = apm->ProcessStream(cap_src, mono_cfg, mono_cfg, cap_dst);
 			if (cap_rc != webrtc::AudioProcessing::kNoError) {
 				UtilityFunctions::push_error(String("EchoGuardProcessor: ProcessStream failed rc=") + String::num_int64(cap_rc));

@@ -302,6 +302,8 @@ func _try_init_native() -> void:
 		print("[echo-guard] native extension instantiate failed")
 		return
 	_native_proc.call("set_sample_rate_hz", _mix_rate)
+	_native_proc.call("set_aec_delay_agnostic", true)
+	_native_proc.call("set_aec_extended_filter", true)
 	_native_proc.call("set_delay_ms", _delay_ms)
 	_native_proc.call("set_post_gain", 1.0) # default boost; tweak later via UI
 	print("[echo-guard] native extension loaded: EchoGuardProcessor (delay_ms=%d)" % _delay_ms)
