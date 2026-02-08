@@ -15,6 +15,21 @@ var _record_start_ms := 0
 
 var _ref: PackedFloat32Array = PackedFloat32Array()
 var _mic: PackedFloat32Array = PackedFloat32Array()
+var _clean_native: PackedFloat32Array = PackedFloat32Array()
+var _native_proc: Object
+var _native_last_rms := 0.0
+var _active_capture_dir := ""
+
+# Native VAD segmentation (10 ms frames).
+var _vad_native_lines: PackedStringArray = PackedStringArray()
+var _vad_native_frame_idx := 0
+var _seg_active := false
+var _seg_index := 0
+var _seg_samples: PackedFloat32Array = PackedFloat32Array()
+var _seg_tail_frames: Array = []
+var _pre_roll_frames: Array = []
+var _speech_run := 0
+var _silence_run := 0
 
 var _mix_rate := 48000
 var _out_dir_abs := ""
@@ -68,6 +83,21 @@ func start_recording() -> void:
 	_record_start_ms = Time.get_ticks_msec()
 	_ref = PackedFloat32Array()
 	_mic = PackedFloat32Array()
+	_clean_native = PackedFloat32Array()
+	_vad_native_lines = PackedStringArray()
+	_vad_native_frame_idx = 0
+	_seg_active = false
+	_seg_index = 0
+	_seg_samples = PackedFloat32Array()
+	_seg_tail_frames = []
+	_pre_roll_frames = []
+	_speech_run = 0
+	_silence_run = 0
+
+	_active_capture_dir = _make_capture_dir()
+	_last_capture_dir = _active_capture_dir
+	DirAccess.make_dir_recursive_absolute(_active_capture_dir.path_join("vad_native"))
+
 	if _cap_bgm:
 		_cap_bgm.clear_buffer()
 	if _cap_mic:
@@ -79,18 +109,29 @@ func start_recording() -> void:
 func stop_and_export() -> void:
 	_recording = false
 	var duration_ms := Time.get_ticks_msec() - _record_start_ms
-	print("[echo-guard] recording stopped, duration_ms=%d ref_samples=%d mic_samples=%d" % [duration_ms, _ref.size(), _mic.size()])
+	print("[echo-guard] recording stopped, duration_ms=%d ref_samples=%d mic_samples=%d clean_samples=%d" % [duration_ms, _ref.size(), _mic.size(), _clean_native.size()])
 
-	var out_dir := _make_capture_dir()
-	_last_capture_dir = out_dir
+	var out_dir := _active_capture_dir
+	if out_dir == "":
+		out_dir = _make_capture_dir()
+		_last_capture_dir = out_dir
 	var ref_wav := out_dir.path_join("ref_signal.wav")
 	var mic_wav := out_dir.path_join("raw_mic.wav")
+	var clean_native_wav := out_dir.path_join("clean_native.wav")
 
 	_write_wav_pcm16_mono(ref_wav, _mix_rate, _ref)
 	_write_wav_pcm16_mono(mic_wav, _mix_rate, _mic)
+	if not _clean_native.is_empty():
+		_write_wav_pcm16_mono(clean_native_wav, _mix_rate, _clean_native)
+
+	_finalize_segment_if_needed()
+	_write_vad_native_log()
+	_active_capture_dir = ""
 
 	print("[echo-guard] wrote: %s" % ref_wav)
 	print("[echo-guard] wrote: %s" % mic_wav)
+	if not _clean_native.is_empty():
+		print("[echo-guard] wrote: %s" % clean_native_wav)
 	print("[echo-guard] next: run scripts/step6_process_capture.ps1 -CaptureDir \"%s\"" % out_dir)
 
 	_set_status("Status: exported\n- %s\n- %s\nNext: run scripts/step6_process_capture.ps1" % [mic_wav, ref_wav])
@@ -168,6 +209,28 @@ func _ensure_bus(bus_name: String) -> void:
 	AudioServer.set_bus_name(new_idx, bus_name)
 	AudioServer.set_bus_send(new_idx, "Master")
 
+func _try_init_native() -> void:
+	_native_proc = null
+	_native_last_rms = 0.0
+
+	# Explicitly load the .gdextension resource so the class is available even if the project setting
+	# isn't applied (useful for headless runs or misconfigured projects).
+	var ext_path := "res://gdextension/echo_guard.gdextension"
+	if ResourceLoader.exists(ext_path):
+		ResourceLoader.load(ext_path)
+
+	if not ClassDB.class_exists("EchoGuardProcessor"):
+		print("[echo-guard] native extension not loaded (EchoGuardProcessor missing)")
+		return
+	_native_proc = ClassDB.instantiate("EchoGuardProcessor")
+	if _native_proc == null:
+		print("[echo-guard] native extension instantiate failed")
+		return
+	_native_proc.call("set_sample_rate_hz", _mix_rate)
+	_native_proc.call("set_delay_ms", 0)
+	_native_proc.call("set_post_gain", 2.0) # default boost; tweak later via UI
+	print("[echo-guard] native extension loaded: EchoGuardProcessor")
+
 
 func _drain_captures_discard() -> void:
 	# Prevent buffer buildup while idle.
@@ -192,13 +255,166 @@ func _pull_aligned_frames() -> void:
 
 	_ref.resize(_ref.size() + n)
 	_mic.resize(_mic.size() + n)
+	var ref_tmp := PackedFloat32Array()
+	var mic_tmp := PackedFloat32Array()
+	ref_tmp.resize(n)
+	mic_tmp.resize(n)
 
 	var base: int = _ref.size() - n
 	for i in range(n):
 		var b: Vector2 = bgm_buf[i]
 		var m: Vector2 = mic_buf[i]
-		_ref[base + i] = (b.x + b.y) * 0.5
-		_mic[base + i] = (m.x + m.y) * 0.5
+		var r := (b.x + b.y) * 0.5
+		var mic := (m.x + m.y) * 0.5
+		_ref[base + i] = r
+		_mic[base + i] = mic
+		ref_tmp[i] = r
+		mic_tmp[i] = mic
+
+	if _native_proc != null:
+		var res = _native_proc.call("process_chunk", mic_tmp, ref_tmp)
+		if typeof(res) == TYPE_DICTIONARY and res.has("clean"):
+			var c: PackedFloat32Array = res["clean"]
+			if not c.is_empty():
+				var old := _clean_native.size()
+				_clean_native.resize(old + c.size())
+				for i in range(c.size()):
+					_clean_native[old + i] = c[i]
+				if res.has("voice_frames"):
+					_segment_native_vad(c, res["voice_frames"])
+			if res.has("rms"):
+				_native_last_rms = float(res["rms"])
+
+func _frame_size() -> int:
+	return int(_mix_rate / 100) # 10 ms frames
+
+func _segment_native_vad(clean_chunk: PackedFloat32Array, voice_frames: PackedByteArray) -> void:
+	# Basic segmenter:
+	# - Start after 300ms of consecutive voice.
+	# - End after 1500ms of consecutive silence (keep only last 300ms as tail).
+	var frame := _frame_size()
+	if frame <= 0:
+		return
+	var speech_confirm := 30
+	var silence_confirm := 150
+	var pre_roll_keep := 10
+	var tail_keep := 30
+
+	var num_frames := voice_frames.size()
+	for fi in range(num_frames):
+		var start := fi * frame
+		if start >= clean_chunk.size():
+			break
+		var end := mini(start + frame, clean_chunk.size())
+		var is_voice := voice_frames[fi] != 0
+
+		# Extract frame samples.
+		var frame_samples := PackedFloat32Array()
+		frame_samples.resize(end - start)
+		for i in range(end - start):
+			frame_samples[i] = clean_chunk[start + i]
+
+		# VAD log line (frame_idx voice_flag)
+		_vad_native_lines.append("%d\t%d" % [_vad_native_frame_idx, 1 if is_voice else 0])
+		_vad_native_frame_idx += 1
+
+		if is_voice:
+			_speech_run += 1
+			_silence_run = 0
+		else:
+			_silence_run += 1
+			_speech_run = 0
+
+		if not _seg_active:
+			# Maintain pre-roll ring buffer.
+			_pre_roll_frames.append(frame_samples)
+			while _pre_roll_frames.size() > pre_roll_keep:
+				_pre_roll_frames.pop_front()
+
+			if is_voice and _speech_run >= speech_confirm:
+				_seg_active = true
+				_seg_samples = PackedFloat32Array()
+				_seg_tail_frames = []
+				for fr in _pre_roll_frames:
+					_append_samples(_seg_samples, fr)
+				_pre_roll_frames = []
+				_append_samples(_seg_samples, frame_samples)
+			continue
+
+		# Segment active.
+		if is_voice:
+			# Flush kept tail.
+			for fr in _seg_tail_frames:
+				_append_samples(_seg_samples, fr)
+			_seg_tail_frames = []
+			_append_samples(_seg_samples, frame_samples)
+		else:
+			# Keep last tail_keep frames only.
+			_seg_tail_frames.append(frame_samples)
+			while _seg_tail_frames.size() > tail_keep:
+				_seg_tail_frames.pop_front()
+
+		if _silence_run >= silence_confirm:
+			_finalize_segment()
+
+func _append_samples(dst: PackedFloat32Array, src: PackedFloat32Array) -> void:
+	if src.is_empty():
+		return
+	var old := dst.size()
+	dst.resize(old + src.size())
+	for i in range(src.size()):
+		dst[old + i] = src[i]
+
+func _finalize_segment_if_needed() -> void:
+	if _seg_active:
+		_finalize_segment()
+
+func _finalize_segment() -> void:
+	if not _seg_active:
+		return
+
+	# Include kept tail for natural endings.
+	for fr in _seg_tail_frames:
+		_append_samples(_seg_samples, fr)
+
+	_seg_tail_frames = []
+	_seg_active = false
+	_speech_run = 0
+	_silence_run = 0
+
+	if _seg_samples.is_empty():
+		return
+
+	var base := _last_capture_dir
+	if base == "":
+		base = _active_capture_dir
+	if base == "":
+		return
+
+	var vad_dir := base.path_join("vad_native")
+	DirAccess.make_dir_recursive_absolute(vad_dir)
+	_seg_index += 1
+	var filename := "segment_%03d.wav" % _seg_index
+	var out := vad_dir.path_join(filename)
+	_write_wav_pcm16_mono(out, _mix_rate, _seg_samples)
+	_seg_samples = PackedFloat32Array()
+
+func _write_vad_native_log() -> void:
+	var base := _last_capture_dir
+	if base == "":
+		base = _active_capture_dir
+	if base == "":
+		return
+	var vad_dir := base.path_join("vad_native")
+	if not DirAccess.dir_exists_absolute(vad_dir):
+		return
+	var txt := vad_dir.path_join("vad_result.txt")
+	var f := FileAccess.open(txt, FileAccess.WRITE)
+	if f == null:
+		return
+	for line in _vad_native_lines:
+		f.store_line(line)
+	f.close()
 
 
 func _write_wav_pcm16_mono(path_abs: String, sample_rate: int, samples: PackedFloat32Array) -> void:
@@ -338,12 +554,14 @@ func _reload_segments(update_status: bool = true) -> void:
 			_set_status("Status: no captures yet. Press Start/Stop to export first.")
 		return
 
-	var vad_dir := base.path_join("vad")
+	var vad_dir := base.path_join("vad_native")
+	if not DirAccess.dir_exists_absolute(vad_dir):
+		vad_dir = base.path_join("vad")
 	_segments.clear()
 
 	if not DirAccess.dir_exists_absolute(vad_dir):
 		if update_status:
-			_set_status("Status: exported at %s\n(No vad/ yet. Run scripts/step6_process_capture.ps1)" % base)
+			_set_status("Status: exported at %s\n(No vad_native/ or vad/ yet.)" % base)
 		return
 
 	var d := DirAccess.open(vad_dir)
@@ -376,7 +594,7 @@ func _reload_segments(update_status: bool = true) -> void:
 			if _proc_running:
 				_set_status("Status: processing… (waiting for vad_result.txt)\n%s" % vad_dir)
 			else:
-				_set_status("Status: vad/ exists but vad_result.txt missing: %s" % vad_dir)
+				_set_status("Status: vad folder exists but vad_result.txt missing: %s" % vad_dir)
 
 	_update_ui()
 
@@ -392,7 +610,9 @@ func _play_selected() -> void:
 	if base == "":
 		return
 
-	var vad_dir := base.path_join("vad")
+	var vad_dir := base.path_join("vad_native")
+	if not DirAccess.dir_exists_absolute(vad_dir):
+		vad_dir = base.path_join("vad")
 	var filename := _segments.get_item_text(sel[0])
 	var path_abs := vad_dir.path_join(filename)
 
@@ -535,6 +755,11 @@ func _load_wav_as_stream(path_abs: String) -> AudioStreamWAV:
 func _print_instructions() -> void:
 	print("")
 	print("echo-guard Godot Step 6")
+	_try_init_native()
+	if _native_proc != null:
+		print("- Native: EchoGuardProcessor loaded (AEC+VAD backend if built)")
+	else:
+		print("- Native: not loaded (build Step 7 to enable realtime processing)")
 	print("- BGM: res://assets/audio/pixel_coffee_break.mp3 (bus=%s)" % BUS_BGM)
 	print("- Mic: AudioStreamMicrophone (bus=%s)" % BUS_MIC)
 	print("- Hotkey: Press R to start/stop + export")

@@ -2,3 +2,7 @@
 	path = deps/webrtc-audio-processing
 	url = https://github.com/cross-platform/webrtc-audio-processing
 	ignore = untracked
+[submodule "deps/godot-cpp"]
+	path = deps/godot-cpp
+	url = https://github.com/godotengine/godot-cpp.git
+	branch = 4.5

@@ -6,6 +6,11 @@ dist/
 # deps build/install outputs
 deps/webrtc-audio-processing/build/
 deps/webrtc-audio-processing/install/
+deps/webrtc-audio-processing/build-win/
+deps/webrtc-audio-processing/install-win/
+deps/godot-cpp/bin/
+deps/godot-cpp/gen/
+deps/godot-cpp/.sconsign.dblite
 
 # Python
 __pycache__/
@@ -25,6 +30,7 @@ Desktop.ini
 godot/.godot/
 godot/.import/
 *.import
+godot/bin/
 
 # Local assets (avoid accidental commits)
 pixel_coffee_break.mp3

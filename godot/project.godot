@@ -23,3 +23,7 @@ driver/mix_rate=48000
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
+
+[native_extensions]
+
+paths=["res://gdextension/echo_guard.gdextension"]
