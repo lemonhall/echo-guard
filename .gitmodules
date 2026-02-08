@@ -1,6 +1,6 @@
 [submodule "deps/webrtc-audio-processing"]
 	path = deps/webrtc-audio-processing
-	url = https://github.com/cross-platform/webrtc-audio-processing
+	url = https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing.git
 	ignore = untracked
 [submodule "deps/godot-cpp"]
 	path = deps/godot-cpp

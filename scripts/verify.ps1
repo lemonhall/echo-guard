@@ -16,6 +16,37 @@ function Write-Section([string]$title) {
   Write-Host ("== {0} ==" -f $title)
 }
 
+function Try-Run([scriptblock]$fn) {
+  try { return & $fn } catch { return $null }
+}
+
+function Get-WeRtcApmDescribe([string]$repoRoot) {
+  $webrtcPath = Join-Path $repoRoot "deps\\webrtc-audio-processing"
+  if (-not (Test-Path $webrtcPath)) { return $null }
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return $null }
+  $desc = Try-Run { git -C $webrtcPath describe --tags --always 2>$null }
+  if (-not $desc) { return $null }
+  return ($desc | Out-String).Trim()
+}
+
+function Find-WeRtcApmLinuxInstallLib([string]$webrtcPath) {
+  $libDir = Join-Path $webrtcPath "install\\lib\\x86_64-linux-gnu"
+  if (-not (Test-Path $libDir)) { return $null }
+
+  $preferred = @(
+    (Join-Path $libDir "libwebrtc-audio-processing-2.a"), # v2.x (expected)
+    (Join-Path $libDir "libwebrtc_audio_processing.a")    # v0.3.x (legacy)
+  )
+
+  foreach ($p in $preferred) {
+    if (Test-Path $p) { return $p }
+  }
+
+  $fallback = Get-ChildItem -File -ErrorAction SilentlyContinue $libDir -Filter "libwebrtc*audio*processing*.a" |
+    Select-Object -First 1 -ExpandProperty FullName
+  return $fallback
+}
+
 function Require-Command([string]$name, [string]$help) {
   $cmd = Get-Command $name -ErrorAction SilentlyContinue
   if (-not $cmd) {
@@ -108,6 +139,14 @@ if (-not $SkipWsl) {
     $mesonFile = Join-Path $webrtcPath "meson.build"
     if (Test-Path $mesonFile) {
       Write-Host ("[ OK ] deps present: {0}" -f $webrtcPath)
+      $repoRoot = Get-RepoRoot
+      $desc = Get-WeRtcApmDescribe $repoRoot
+      if ($desc) {
+        Write-Host ("[INFO] webrtc-audio-processing rev: {0}" -f $desc)
+        if ($desc -notmatch '^v2\.1($|-)') {
+          Write-Host "[WARN] webrtc-audio-processing is not v2.1; see doc\\迁移.md (AEC3 migration)"
+        }
+      }
     } else {
       Write-Host ("[WARN] deps missing or not initialized: {0}" -f $webrtcPath)
       Write-Host "       Fix: git submodule update --init --recursive"
@@ -115,8 +154,8 @@ if (-not $SkipWsl) {
       if ($RequireDeps) { $failures++ }
     }
 
-    $installLib = Join-Path $webrtcPath "install\\lib\\x86_64-linux-gnu\\libwebrtc_audio_processing.a"
-    if (Test-Path $installLib) {
+    $installLib = Find-WeRtcApmLinuxInstallLib $webrtcPath
+    if ($installLib -and (Test-Path $installLib)) {
       Write-Host ("[ OK ] webrtc built (WSL): {0}" -f $installLib)
     } else {
       Write-Host "[WARN] webrtc not built/installed yet (WSL artifact missing)"
@@ -148,6 +187,13 @@ if ($git) {
 
   if (Test-Path $mesonFile) {
     Write-Host ("[ OK ] webrtc-audio-processing ready: {0}" -f $subPath)
+    $desc = Get-WeRtcApmDescribe $repoRoot
+    if ($desc) {
+      Write-Host ("[INFO] webrtc-audio-processing rev: {0}" -f $desc)
+      if ($desc -notmatch '^v2\.1($|-)') {
+        Write-Host "[WARN] webrtc-audio-processing is not v2.1; see doc\\迁移.md (AEC3 migration)"
+      }
+    }
   } else {
     Write-Host ("[WARN] webrtc-audio-processing not ready: {0}" -f $subPath)
     Write-Host "       Fix: git submodule update --init --recursive"

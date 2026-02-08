@@ -12,21 +12,13 @@ void EchoGuardProcessor::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_sample_rate_hz"), &EchoGuardProcessor::get_sample_rate_hz);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "sample_rate_hz"), "set_sample_rate_hz", "get_sample_rate_hz");
 
-	ClassDB::bind_method(D_METHOD("set_delay_ms", "ms"), &EchoGuardProcessor::set_delay_ms);
-	ClassDB::bind_method(D_METHOD("get_delay_ms"), &EchoGuardProcessor::get_delay_ms);
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "delay_ms"), "set_delay_ms", "get_delay_ms");
-
 	ClassDB::bind_method(D_METHOD("set_aec_enabled", "enabled"), &EchoGuardProcessor::set_aec_enabled);
 	ClassDB::bind_method(D_METHOD("get_aec_enabled"), &EchoGuardProcessor::get_aec_enabled);
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "aec_enabled"), "set_aec_enabled", "get_aec_enabled");
 
-	ClassDB::bind_method(D_METHOD("set_aec_extended_filter", "enabled"), &EchoGuardProcessor::set_aec_extended_filter);
-	ClassDB::bind_method(D_METHOD("get_aec_extended_filter"), &EchoGuardProcessor::get_aec_extended_filter);
-	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "aec_extended_filter"), "set_aec_extended_filter", "get_aec_extended_filter");
-
-	ClassDB::bind_method(D_METHOD("set_aec_delay_agnostic", "enabled"), &EchoGuardProcessor::set_aec_delay_agnostic);
-	ClassDB::bind_method(D_METHOD("get_aec_delay_agnostic"), &EchoGuardProcessor::get_aec_delay_agnostic);
-	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "aec_delay_agnostic"), "set_aec_delay_agnostic", "get_aec_delay_agnostic");
+	ClassDB::bind_method(D_METHOD("set_aec_mobile_mode", "enabled"), &EchoGuardProcessor::set_aec_mobile_mode);
+	ClassDB::bind_method(D_METHOD("get_aec_mobile_mode"), &EchoGuardProcessor::get_aec_mobile_mode);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "aec_mobile_mode"), "set_aec_mobile_mode", "get_aec_mobile_mode");
 
 	ClassDB::bind_method(D_METHOD("set_vad_enabled", "enabled"), &EchoGuardProcessor::set_vad_enabled);
 	ClassDB::bind_method(D_METHOD("get_vad_enabled"), &EchoGuardProcessor::get_vad_enabled);
@@ -46,7 +38,7 @@ void EchoGuardProcessor::_bind_methods() {
 void EchoGuardProcessor::set_sample_rate_hz(int p_hz) {
 	sample_rate_hz = p_hz;
 #if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
-	apm.reset();
+	apm = nullptr;
 #endif
 }
 
@@ -54,18 +46,10 @@ int EchoGuardProcessor::get_sample_rate_hz() const {
 	return sample_rate_hz;
 }
 
-void EchoGuardProcessor::set_delay_ms(int p_ms) {
-	delay_ms = p_ms;
-}
-
-int EchoGuardProcessor::get_delay_ms() const {
-	return delay_ms;
-}
-
 void EchoGuardProcessor::set_aec_enabled(bool p_enabled) {
 	aec_enabled = p_enabled;
 #if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
-	apm.reset();
+	apm = nullptr;
 #endif
 }
 
@@ -73,33 +57,19 @@ bool EchoGuardProcessor::get_aec_enabled() const {
 	return aec_enabled;
 }
 
-void EchoGuardProcessor::set_aec_extended_filter(bool p_enabled) {
-	aec_extended_filter = p_enabled;
+void EchoGuardProcessor::set_aec_mobile_mode(bool p_enabled) {
+	aec_mobile_mode = p_enabled;
 #if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
-	apm.reset();
+	apm = nullptr;
 #endif
 }
 
-bool EchoGuardProcessor::get_aec_extended_filter() const {
-	return aec_extended_filter;
-}
-
-void EchoGuardProcessor::set_aec_delay_agnostic(bool p_enabled) {
-	aec_delay_agnostic = p_enabled;
-#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
-	apm.reset();
-#endif
-}
-
-bool EchoGuardProcessor::get_aec_delay_agnostic() const {
-	return aec_delay_agnostic;
+bool EchoGuardProcessor::get_aec_mobile_mode() const {
+	return aec_mobile_mode;
 }
 
 void EchoGuardProcessor::set_vad_enabled(bool p_enabled) {
 	vad_enabled = p_enabled;
-#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
-	apm.reset();
-#endif
 }
 
 bool EchoGuardProcessor::get_vad_enabled() const {
@@ -108,9 +78,6 @@ bool EchoGuardProcessor::get_vad_enabled() const {
 
 void EchoGuardProcessor::set_vad_likelihood(int p_likelihood) {
 	vad_likelihood = p_likelihood;
-#if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
-	apm.reset();
-#endif
 }
 
 int EchoGuardProcessor::get_vad_likelihood() const {
@@ -144,42 +111,30 @@ void EchoGuardProcessor::ensure_apm() {
 	proc_cfg.reverse_input_stream() = mono_cfg;
 	proc_cfg.reverse_output_stream() = mono_cfg;
 
-	apm.reset(webrtc::AudioProcessing::Create());
+	webrtc::AudioProcessing::Config apm_cfg;
+	apm_cfg.echo_canceller.enabled = aec_enabled;
+	apm_cfg.echo_canceller.mobile_mode = aec_mobile_mode;
+
+	apm_cfg.noise_suppression.enabled = true;
+	apm_cfg.noise_suppression.level =
+			webrtc::AudioProcessing::Config::NoiseSuppression::kHigh;
+
+	apm_cfg.gain_controller1.enabled = true;
+	apm_cfg.gain_controller1.mode =
+			webrtc::AudioProcessing::Config::GainController1::kAdaptiveDigital;
+
+	apm_cfg.high_pass_filter.enabled = true;
+
+	apm = webrtc::AudioProcessingBuilder().SetConfig(apm_cfg).Create();
 	if (!apm) {
-		UtilityFunctions::push_error("EchoGuardProcessor: AudioProcessing::Create failed");
+		UtilityFunctions::push_error("EchoGuardProcessor: AudioProcessingBuilder().Create failed");
 		return;
 	}
-
-	webrtc::Config extra;
-	extra.Set<webrtc::ExtendedFilter>(new webrtc::ExtendedFilter(aec_extended_filter));
-	extra.Set<webrtc::DelayAgnostic>(new webrtc::DelayAgnostic(aec_delay_agnostic));
-	apm->SetExtraOptions(extra);
 
 	if (apm->Initialize(proc_cfg) != 0) {
 		UtilityFunctions::push_error("EchoGuardProcessor: apm->Initialize failed");
-		apm.reset();
+		apm = nullptr;
 		return;
-	}
-
-	if (aec_enabled) {
-		auto *aec = apm->echo_cancellation();
-		if (!aec) {
-			UtilityFunctions::push_error("EchoGuardProcessor: apm->echo_cancellation() returned null");
-			apm.reset();
-			return;
-		}
-		aec->enable_drift_compensation(false);
-		aec->set_suppression_level(webrtc::EchoCancellation::kHighSuppression);
-		aec->Enable(true);
-	}
-
-	if (vad_enabled) {
-		auto *vd = apm->voice_detection();
-		if (vd) {
-			vd->set_frame_size_ms(10);
-			vd->set_likelihood(static_cast<webrtc::VoiceDetection::Likelihood>(vad_likelihood));
-			vd->Enable(true);
-		}
 	}
 
 	const size_t frame = mono_cfg.num_frames();
@@ -227,7 +182,13 @@ Dictionary EchoGuardProcessor::process_chunk(const PackedFloat32Array &p_mic, co
 
 		const float g = post_gain;
 		const int num_frames = (n + int(frame) - 1) / int(frame);
-		voice_frames.resize(num_frames);
+		if (vad_enabled) {
+			voice_frames.resize(num_frames);
+		}
+		const int likelihood = vad_likelihood < 0 ? 0 : (vad_likelihood > 3 ? 3 : vad_likelihood);
+		const float threshold_dbfs =
+				likelihood == 0 ? -25.0f : (likelihood == 1 ? -30.0f : (likelihood == 2 ? -35.0f : -40.0f));
+		const float threshold = std::pow(10.0f, threshold_dbfs / 20.0f);
 		for (int pos = 0; pos < n; pos += int(frame)) {
 			const int remain = n - pos;
 			const int chunk = remain < int(frame) ? remain : int(frame);
@@ -244,16 +205,15 @@ Dictionary EchoGuardProcessor::process_chunk(const PackedFloat32Array &p_mic, co
 				cap_out[i] = 0.0f;
 			}
 
-			const int rev_rc = apm->ProcessReverseStream(rev_src, mono_cfg, mono_cfg, rev_dst);
-			if (rev_rc != webrtc::AudioProcessing::kNoError) {
-				UtilityFunctions::push_error(String("EchoGuardProcessor: ProcessReverseStream failed rc=") + String::num_int64(rev_rc));
-				break;
+			if (aec_enabled) {
+				const int rev_rc = apm->ProcessReverseStream(rev_src, mono_cfg, mono_cfg, rev_dst);
+				if (rev_rc != webrtc::AudioProcessing::kNoError) {
+					UtilityFunctions::push_error(String("EchoGuardProcessor: ProcessReverseStream failed rc=") + String::num_int64(rev_rc));
+					break;
+				}
 			}
 
 			apm->set_stream_key_pressed(false);
-			if (!aec_delay_agnostic) {
-				apm->set_stream_delay_ms(delay_ms);
-			}
 			const int cap_rc = apm->ProcessStream(cap_src, mono_cfg, mono_cfg, cap_dst);
 			if (cap_rc != webrtc::AudioProcessing::kNoError) {
 				UtilityFunctions::push_error(String("EchoGuardProcessor: ProcessStream failed rc=") + String::num_int64(cap_rc));
@@ -261,11 +221,17 @@ Dictionary EchoGuardProcessor::process_chunk(const PackedFloat32Array &p_mic, co
 			}
 
 			bool frame_voice = false;
-			if (vad_enabled && apm->voice_detection()) {
-				frame_voice = apm->voice_detection()->stream_has_voice();
+			if (vad_enabled) {
+				double frame_sum_sq = 0.0;
+				for (int i = 0; i < chunk; i++) {
+					const float x = cap_out[size_t(i)];
+					frame_sum_sq += double(x) * double(x);
+				}
+				const double frame_rms = std::sqrt(frame_sum_sq / double(chunk));
+				frame_voice = float(frame_rms) >= threshold;
 				has_voice = has_voice || frame_voice;
+				voice_frames[pos / int(frame)] = frame_voice ? 1 : 0;
 			}
-			voice_frames[pos / int(frame)] = frame_voice ? 1 : 0;
 
 			for (int i = 0; i < chunk; i++) {
 				const float x = cap_out[size_t(i)] * g;
@@ -278,10 +244,37 @@ Dictionary EchoGuardProcessor::process_chunk(const PackedFloat32Array &p_mic, co
 	{
 		// Fallback passthrough (no WebRTC available).
 		const float g = post_gain;
+		const int frame = sample_rate_hz > 0 ? (sample_rate_hz / 100) : 480;
+		const int num_frames = (n + frame - 1) / frame;
+		if (vad_enabled) {
+			voice_frames.resize(num_frames);
+		}
+		const int likelihood = vad_likelihood < 0 ? 0 : (vad_likelihood > 3 ? 3 : vad_likelihood);
+		const float threshold_dbfs =
+				likelihood == 0 ? -25.0f : (likelihood == 1 ? -30.0f : (likelihood == 2 ? -35.0f : -40.0f));
+		const float threshold = std::pow(10.0f, threshold_dbfs / 20.0f);
 		for (int i = 0; i < n; i++) {
 			const float x = p_mic[i] * g;
 			clean[i] = x;
 			sum_sq += double(x) * double(x);
+		}
+		if (vad_enabled) {
+			for (int f = 0; f < num_frames; f++) {
+				const int pos = f * frame;
+				const int remain = n - pos;
+				const int chunk = remain < frame ? remain : frame;
+				if (chunk <= 0) break;
+
+				double frame_sum_sq = 0.0;
+				for (int i = 0; i < chunk; i++) {
+					const float x = clean[pos + i];
+					frame_sum_sq += double(x) * double(x);
+				}
+				const double frame_rms = std::sqrt(frame_sum_sq / double(chunk));
+				const bool frame_voice = float(frame_rms) >= threshold;
+				has_voice = has_voice || frame_voice;
+				voice_frames[f] = frame_voice ? 1 : 0;
+			}
 		}
 	}
 

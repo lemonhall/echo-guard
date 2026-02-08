@@ -37,9 +37,6 @@ var _silence_run := 0
 var _mix_rate := 48000
 var _out_dir_abs := ""
 var _last_capture_dir := ""
-var _delay_ms := 0
-var _delay_ms_override := -1
-var _delay_ms_extra := 30
 var _align_to_10ms := true
 var _duck_bgm := true
 var _bgm_duck_db := -18.0
@@ -61,7 +58,6 @@ func _ready() -> void:
 	_mix_rate = int(ProjectSettings.get_setting("audio/driver/mix_rate", 48000))
 	_out_dir_abs = _default_out_dir()
 	_apply_cmdline_overrides()
-	_compute_delay_ms()
 	_setup_buses()
 	_setup_players()
 	_wire_ui()
@@ -302,11 +298,13 @@ func _try_init_native() -> void:
 		print("[echo-guard] native extension instantiate failed")
 		return
 	_native_proc.call("set_sample_rate_hz", _mix_rate)
-	_native_proc.call("set_aec_delay_agnostic", true)
-	_native_proc.call("set_aec_extended_filter", true)
-	_native_proc.call("set_delay_ms", _delay_ms)
+	if not _native_proc.has_method("set_aec_mobile_mode"):
+		print("[echo-guard] native extension is out of date (missing set_aec_mobile_mode). Rebuild: pwsh -File scripts/build_gdextension.ps1 -DebugOnly")
+		_native_proc = null
+		return
+	_native_proc.call("set_aec_mobile_mode", false)
 	_native_proc.call("set_post_gain", 1.0) # default boost; tweak later via UI
-	print("[echo-guard] native extension loaded: EchoGuardProcessor (delay_ms=%d)" % _delay_ms)
+	print("[echo-guard] native extension loaded: EchoGuardProcessor")
 
 
 func _drain_captures_discard() -> void:
@@ -812,33 +810,11 @@ func _apply_cmdline_overrides() -> void:
 			_bgm_duck_db = float(user_args[i + 1])
 			i += 2
 			continue
-		if a == "--eg-delay-ms" and i + 1 < user_args.size():
-			_delay_ms_override = int(user_args[i + 1])
-			i += 2
-			continue
-		if a == "--eg-delay-extra-ms" and i + 1 < user_args.size():
-			_delay_ms_extra = int(user_args[i + 1])
-			i += 2
-			continue
 		if a == "--eg-no-frame-align":
 			_align_to_10ms = false
 			i += 1
 			continue
 		i += 1
-
-
-func _compute_delay_ms() -> void:
-	if _delay_ms_override >= 0:
-		_delay_ms = _delay_ms_override
-		print("[echo-guard] delay override: %d ms" % _delay_ms)
-		return
-
-	var out_lat_ms := 0
-	if AudioServer.has_method("get_output_latency"):
-		out_lat_ms = int(round(float(AudioServer.get_output_latency()) * 1000.0))
-
-	_delay_ms = maxi(0, out_lat_ms + _delay_ms_extra)
-	print("[echo-guard] delay estimate: output_latency_ms=%d extra_ms=%d -> delay_ms=%d (override with --eg-delay-ms)" % [out_lat_ms, _delay_ms_extra, _delay_ms])
 
 
 func _apply_bgm_duck() -> void:

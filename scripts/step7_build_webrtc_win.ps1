@@ -23,7 +23,7 @@ if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
   throw "ninja not found. Install: pwsh -File scripts/install_tools_windows.ps1 -InstallNinja"
 }
 
-$buildDir = Join-Path $webrtcDir "build-win"
+$buildDir = Join-Path $webrtcDir "build-win-v2"
 $installDir = Join-Path $webrtcDir "install-win"
 
 $buildType = if ($Config -eq "debug") { "debug" } else { "release" }
@@ -34,6 +34,7 @@ $setupArgs = @(
   "--buildtype=$buildType",
   "--backend=ninja",
   "--default-library=static",
+  "-Dcpp_std=c++20",
   "-Db_vscrt=mt",
   "--prefix", """$installDir"""
 )

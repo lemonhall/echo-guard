@@ -1,5 +1,6 @@
-#include "webrtc/modules/audio_processing/include/audio_processing.h"
+#include "api/audio/audio_processing.h"
 
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -167,13 +168,12 @@ struct Args {
   std::string mic_path;
   std::string ref_path;
   std::string out_path;
-  int delay_ms = 0;
 };
 
 static void print_usage() {
   std::cout << "offline_aec (WSL)\n"
                "Usage:\n"
-               "  offline_aec --mic <mic.wav> --ref <ref.wav> --out <clean.wav> [--delay-ms N]\n"
+               "  offline_aec --mic <mic.wav> --ref <ref.wav> --out <clean.wav>\n"
                "\n"
                "Notes:\n"
                "  - WAV must be mono PCM16\n"
@@ -204,10 +204,6 @@ static std::optional<Args> parse_args(int argc, char** argv) {
       auto v = need("--out");
       if (!v) return std::nullopt;
       args.out_path = *v;
-    } else if (a == "--delay-ms") {
-      auto v = need("--delay-ms");
-      if (!v) return std::nullopt;
-      args.delay_ms = std::stoi(*v);
     } else if (a == "-h" || a == "--help") {
       print_usage();
       return std::nullopt;
@@ -255,31 +251,29 @@ int main(int argc, char** argv) {
   proc_cfg.reverse_input_stream() = mono_cfg;
   proc_cfg.reverse_output_stream() = mono_cfg;
 
-  std::unique_ptr<webrtc::AudioProcessing> apm(webrtc::AudioProcessing::Create());
+  webrtc::AudioProcessing::Config apm_cfg;
+  apm_cfg.echo_canceller.enabled = true;
+  apm_cfg.echo_canceller.mobile_mode = false;
+
+  apm_cfg.noise_suppression.enabled = true;
+  apm_cfg.noise_suppression.level =
+      webrtc::AudioProcessing::Config::NoiseSuppression::kHigh;
+
+  apm_cfg.gain_controller1.enabled = true;
+  apm_cfg.gain_controller1.mode =
+      webrtc::AudioProcessing::Config::GainController1::kAdaptiveDigital;
+
+  apm_cfg.high_pass_filter.enabled = true;
+
+  rtc::scoped_refptr<webrtc::AudioProcessing> apm =
+      webrtc::AudioProcessingBuilder().SetConfig(apm_cfg).Create();
   if (!apm) {
-    std::cerr << "[ERROR] AudioProcessing::Create failed\n";
+    std::cerr << "[ERROR] AudioProcessingBuilder().Create failed\n";
     return 1;
   }
-
-  webrtc::Config extra;
-  apm->SetExtraOptions(extra);
 
   if (apm->Initialize(proc_cfg) != 0) {
     std::cerr << "[ERROR] apm->Initialize failed\n";
-    return 1;
-  }
-
-  auto* aec = apm->echo_cancellation();
-  if (!aec) {
-    std::cerr << "[ERROR] apm->echo_cancellation() returned null\n";
-    return 1;
-  }
-  aec->enable_drift_compensation(false);
-  aec->set_suppression_level(webrtc::EchoCancellation::kHighSuppression);
-  aec->Enable(true);
-
-  if (apm->set_stream_delay_ms(args.delay_ms) != 0) {
-    std::cerr << "[ERROR] set_stream_delay_ms failed (delay_ms=" << args.delay_ms << ")\n";
     return 1;
   }
 
@@ -321,12 +315,6 @@ int main(int argc, char** argv) {
     const float* cap_src[1] = {cap_in.data()};
     float* cap_dst[1] = {cap_out.data()};
     apm->set_stream_key_pressed(false);
-    const int delay_rc = apm->set_stream_delay_ms(args.delay_ms);
-    if (delay_rc != webrtc::AudioProcessing::kNoError) {
-      std::cerr << "[ERROR] set_stream_delay_ms failed at pos=" << pos << " rc=" << delay_rc
-                << "\n";
-      return 1;
-    }
 
     const int cap_rc = apm->ProcessStream(cap_src, mono_cfg, mono_cfg, cap_dst);
     if (cap_rc != webrtc::AudioProcessing::kNoError) {

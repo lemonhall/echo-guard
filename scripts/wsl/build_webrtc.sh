@@ -22,7 +22,9 @@ if ! command -v ninja >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ ! -d build ]]; then
+if [[ -d build ]]; then
+  meson setup build --prefix="$PWD/install" --reconfigure
+else
   meson setup build --prefix="$PWD/install"
 fi
 
@@ -30,4 +32,3 @@ meson compile -C build
 meson install -C build
 
 echo "[OK] Installed to: $webrtc_dir/install"
-

@@ -7,9 +7,22 @@ sources = Glob("src/*.cpp")
 
 # Optional WebRTC APM link (built via scripts/step7_build_webrtc_win.ps1).
 webrtc_install = "../../../deps/webrtc-audio-processing/install-win"
-webrtc_inc = webrtc_install + "/include/webrtc_audio_processing"
-webrtc_lib = webrtc_install + "/lib/libwebrtc_audio_processing.a"
-if File(webrtc_lib).exists():
+webrtc_inc = webrtc_install + "/include/webrtc-audio-processing-2"
+if not File(webrtc_inc + "/api/audio/audio_processing.h").exists():
+    webrtc_inc = None
+webrtc_lib_candidates = [
+    webrtc_install + "/lib/libwebrtc-audio-processing-2.a",
+    webrtc_install + "/lib/libwebrtc_audio_processing.a",
+    webrtc_install + "/lib/webrtc-audio-processing-2.lib",
+    webrtc_install + "/lib/webrtc_audio_processing.lib",
+]
+webrtc_lib = None
+for c in webrtc_lib_candidates:
+    if File(c).exists():
+        webrtc_lib = c
+        break
+
+if webrtc_lib and webrtc_inc:
     env.AppendUnique(CPPDEFINES=["ECHO_GUARD_HAVE_WEBRTC_APM=1"])
     env.AppendUnique(
         CPPDEFINES=[
@@ -19,8 +32,13 @@ if File(webrtc_lib).exists():
             "_WINSOCKAPI_",
         ]
     )
-    env.AppendUnique(CPPPATH=[webrtc_inc])
-    env.AppendUnique(LIBS=[File(webrtc_lib), "winmm"])
+    env.AppendUnique(CPPPATH=[webrtc_inc, webrtc_install + "/include"])
+    # v2.x may install multiple static libraries (e.g. abseil). Link all archives present.
+    webrtc_archives = Glob(webrtc_install + "/lib/*.a") + Glob(webrtc_install + "/lib/*.lib")
+    if webrtc_archives:
+        env.AppendUnique(LIBS=webrtc_archives + ["winmm"])
+    else:
+        env.AppendUnique(LIBS=[File(webrtc_lib), "winmm"])
 else:
     env.AppendUnique(CPPDEFINES=["ECHO_GUARD_HAVE_WEBRTC_APM=0"])
 

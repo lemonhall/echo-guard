@@ -6,8 +6,7 @@
 #include <godot_cpp/variant/packed_float32_array.hpp>
 
 #if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
-#include <webrtc/modules/audio_processing/include/audio_processing.h>
-#include <memory>
+#include <api/audio/audio_processing.h>
 #include <vector>
 #endif
 
@@ -17,16 +16,14 @@ class EchoGuardProcessor : public RefCounted {
 	GDCLASS(EchoGuardProcessor, RefCounted)
 
 	int sample_rate_hz = 48000;
-	int delay_ms = 0;
 	bool aec_enabled = true;
-	bool aec_extended_filter = false;
-	bool aec_delay_agnostic = false;
+	bool aec_mobile_mode = false;
 	bool vad_enabled = true;
-	int vad_likelihood = 2; // VoiceDetection::kModerateLikelihood
+	int vad_likelihood = 2; // 0..3 (less..more sensitive), energy VAD
 	float post_gain = 1.0f;
 
 #if defined(ECHO_GUARD_HAVE_WEBRTC_APM) && ECHO_GUARD_HAVE_WEBRTC_APM
-	std::unique_ptr<webrtc::AudioProcessing> apm;
+	rtc::scoped_refptr<webrtc::AudioProcessing> apm;
 	webrtc::StreamConfig mono_cfg;
 	webrtc::ProcessingConfig proc_cfg;
 	std::vector<float> rev_buf;
@@ -43,17 +40,11 @@ public:
 	void set_sample_rate_hz(int p_hz);
 	int get_sample_rate_hz() const;
 
-	void set_delay_ms(int p_ms);
-	int get_delay_ms() const;
-
 	void set_aec_enabled(bool p_enabled);
 	bool get_aec_enabled() const;
 
-	void set_aec_extended_filter(bool p_enabled);
-	bool get_aec_extended_filter() const;
-
-	void set_aec_delay_agnostic(bool p_enabled);
-	bool get_aec_delay_agnostic() const;
+	void set_aec_mobile_mode(bool p_enabled);
+	bool get_aec_mobile_mode() const;
 
 	void set_vad_enabled(bool p_enabled);
 	bool get_vad_enabled() const;
