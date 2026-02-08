@@ -3,6 +3,10 @@ build/
 out/
 dist/
 
+# deps build/install outputs
+deps/webrtc-audio-processing/build/
+deps/webrtc-audio-processing/install/
+
 # Python
 __pycache__/
 *.pyc
@@ -16,4 +20,3 @@ __pycache__/
 # OS
 Thumbs.db
 Desktop.ini
-

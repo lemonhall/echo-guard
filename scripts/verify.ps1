@@ -1,7 +1,8 @@
 param(
   [switch]$SkipNative,
   [switch]$SkipWsl,
-  [switch]$UseUv
+  [switch]$UseUv,
+  [switch]$RequireDeps
 )
 
 $ErrorActionPreference = "Stop"
@@ -86,11 +87,14 @@ if (-not $SkipWsl) {
   $hasWsl = Require-Command "wsl" "Install WSL2 (Ubuntu 24 recommended) if you want to build webrtc-audio-processing."
   if ($hasWsl) {
     $webrtcPath = Join-Path $PSScriptRoot "..\\deps\\webrtc-audio-processing"
-    if (Test-Path $webrtcPath) {
+    $mesonFile = Join-Path $webrtcPath "meson.build"
+    if (Test-Path $mesonFile) {
       Write-Host ("[ OK ] deps present: {0}" -f $webrtcPath)
     } else {
-      Write-Host ("[WARN] deps missing: {0}" -f $webrtcPath)
-      Write-Host "       See deps/README.md and scripts/wsl/README.md"
+      Write-Host ("[WARN] deps missing or not initialized: {0}" -f $webrtcPath)
+      Write-Host "       Fix: git submodule update --init --recursive"
+      Write-Host "       See: deps/README.md and scripts/wsl/README.md"
+      if ($RequireDeps) { $failures++ }
     }
   } else {
     $failures++
@@ -98,6 +102,33 @@ if (-not $SkipWsl) {
 } else {
   Write-Section "WSL (webrtc-audio-processing) Check"
   Write-Host "[SKIP] -SkipWsl set"
+}
+
+Write-Section "Deps (Submodule) Check"
+$git = Get-Command git -ErrorAction SilentlyContinue
+if ($git) {
+  $repoRoot = Get-RepoRoot
+  $gitmodules = Join-Path $repoRoot ".gitmodules"
+  $subPath = Join-Path $repoRoot "deps\\webrtc-audio-processing"
+  $mesonFile = Join-Path $subPath "meson.build"
+
+  if (Test-Path $gitmodules) {
+    Write-Host ("[ OK ] .gitmodules present: {0}" -f $gitmodules)
+  } else {
+    Write-Host "[WARN] .gitmodules not found (no submodules configured yet)"
+    if ($RequireDeps) { $failures++ }
+  }
+
+  if (Test-Path $mesonFile) {
+    Write-Host ("[ OK ] webrtc-audio-processing ready: {0}" -f $subPath)
+  } else {
+    Write-Host ("[WARN] webrtc-audio-processing not ready: {0}" -f $subPath)
+    Write-Host "       Fix: git submodule update --init --recursive"
+    if ($RequireDeps) { $failures++ }
+  }
+} else {
+  Write-Host "[WARN] git not found; cannot validate submodules"
+  if ($RequireDeps) { $failures++ }
 }
 
 Write-Host ""

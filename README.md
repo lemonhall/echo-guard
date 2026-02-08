@@ -22,6 +22,22 @@ pwsh -File .\scripts\verify.ps1 -SkipNative -SkipWsl -UseUv
 pwsh -File .\scripts\verify.ps1
 ```
 
+## 依赖（git submodule）
+
+本仓库把 `webrtc-audio-processing` 作为 submodule 放在 `deps/webrtc-audio-processing`。
+
+首次拉取（或 clone 后补拉）：
+
+```powershell
+git submodule update --init --recursive
+```
+
+强制要求依赖就绪（把缺失视为失败）：
+
+```powershell
+pwsh -File .\scripts\verify.ps1 -RequireDeps
+```
+
 ## 文档
 
 - 方案：`doc/init.md`
